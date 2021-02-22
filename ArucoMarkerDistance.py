@@ -10,38 +10,6 @@ import cv2
 import cv2.aruco as aruco
 
 '''
-	FPS class
-	Simple class to calculate FPS
-	from PyImageSearch
-'''
-class FPS:
-	def __init__(self):
-		# store the start time, end time, and total number of frames
-		# that were examined between the start and end intervals
-		self._start = None
-		self._end = None
-		self._numFrames = 0
-	def start(self):
-		# start the timer
-		self._start = datetime.datetime.now()
-		return self
-	def stop(self):
-		# stop the timer
-		self._end = datetime.datetime.now()
-	def update(self):
-		# increment the total number of frames examined during the
-		# start and end intervals
-		self._numFrames += 1
-	def elapsed(self):
-		# return the total number of seconds between the start and
-		# end interval
-		return (self._end - self._start).total_seconds()
-	def fps(self):
-		# compute the (approximate) frames per second
-		return self._numFrames / self.elapsed()
-
-
-'''
 	WebcamVideoStream class
 	Simple class to encapsulate threaded usage of OpenCV's video capturing tools
 	from PyImageSearch
@@ -76,10 +44,6 @@ class WebcamVideoStream:
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
-ap.add_argument("-n", "--num-frames", type=int, default=100,
-	help="# of frames to loop over for FPS test")
-ap.add_argument("-d", "--display", type=int, default=-1,
-	help="Whether or not frames should be displayed")
 ap.add_argument("-p", "--port", type=int, default=0,
 	help="Puerto de cámara a utilizar (para más información, ejecute testports.py)")
 
@@ -89,12 +53,11 @@ args = vars(ap.parse_args())
 aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
 parameters =  aruco.DetectorParameters_create()
 
-# created a *threaded* video stream, allow the camera sensor to warmup,
-# and start the FPS counter
-print("[INFO] sampling THREADED frames from webcam...")
+#create a threaded video stream
+print("Initialising webcam and parameters...")
 vs = WebcamVideoStream(src=args["port"]).start()
-fps = FPS().start()
-# loop over some frames using the threaded stream
+
+#Record and search for markers until stop signal is given
 while (True): #args["num_frames"]: #ending condition, should maybe change to a key input
 	# grab the frame from the threaded video stream and resize it
 	frame = vs.read()
@@ -114,10 +77,6 @@ while (True): #args["num_frames"]: #ending condition, should maybe change to a k
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 		break
 
-# stop the timer and display FPS information
-fps.stop()
-print("[INFO] elasped time: {:.2f}".format(fps.elapsed()))
-print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
 # do a bit of cleanup
 cv2.destroyAllWindows()
 vs.stop()
