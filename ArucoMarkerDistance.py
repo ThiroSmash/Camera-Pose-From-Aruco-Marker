@@ -2,12 +2,13 @@
 from __future__ import print_function
 import datetime
 from threading import Thread
-#from imutils.video import WebcamVideoStream
-#from imutils.video import FPS
 import argparse
 import imutils
 import cv2
 import cv2.aruco as aruco
+import numpy as np
+
+
 
 '''
 	WebcamVideoStream class
@@ -42,6 +43,7 @@ class WebcamVideoStream:
 		# indicate that the thread should be stopped
 		self.stopped = True
 
+
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--port", type=int, default=0,
@@ -49,31 +51,71 @@ ap.add_argument("-p", "--port", type=int, default=0,
 
 args = vars(ap.parse_args())
 
-#prerequisites of aruco detection
-aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
-parameters =  aruco.DetectorParameters_create()
+
 
 #create a threaded video stream
 print("Initialising webcam and parameters...")
 vs = WebcamVideoStream(src=args["port"]).start()
 
-#Record and search for markers until stop signal is given
-while (True): #args["num_frames"]: #ending condition, should maybe change to a key input
-	# grab the frame from the threaded video stream and resize it
-	frame = vs.read()
-	frame = imutils.resize(frame, width=600)
+#prerequisites of aruco detection
+aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
+parameters =  aruco.DetectorParameters_create()
 
-	# our aruco operations on the frame
+#read intrinsic camera parameters
+matrix = np.loadtxt("intrinsic_parameters.txt", float)
+focalLengthX = matrix[0][0]
+
+#Real width of our markers is 6.35 cm
+realWidth = 6.35
+
+#Marker corners coordinates
+objPoints = np.array([
+			(0,0,0),
+			(6.35,0,0),
+			(6.35,6.35,0),
+			(0,6.35,0)
+			])
+
+#distortion coefficients
+dist_coeffs = np.loadtxt("distortion_coefficients.txt",float)
+
+#Record and search for markers until stop signal is given
+while (True):
+	# grab the frame from the threaded video stream
+	frame = vs.read()
+
+	# detect aruco markers in the frame
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 	corners, ids, rejectedImgPoints = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
 
-	print(corners)
+	#if a marker has been detected, calculate distance to it
+	if(not(ids==None)):
 
-	#show the frame with the detected markers
-	gray = aruco.drawDetectedMarkers(gray, corners)
+		#show the frame, with detected markers
+		gray = aruco.drawDetectedMarkers(gray, corners)
+		print(gray.shape[:2])
+		imgPoints =  np.array(corners[ids[0][0]])		
+		success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+
+		if(success):		
+			#show coordinates in image output
+			font                   = cv2.FONT_HERSHEY_SIMPLEX
+			bottomLeftCornerOfText = [30,30]
+			fontScale              = 0.5
+			fontColor              = (255,255,255)
+			lineType               = 2
+			text = "X: " + str(translation_vector[0])
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 20
+			text = "Y: " + str(translation_vector[1])
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 20
+			text = "Z: " + str(translation_vector[2])
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+
+
 	cv2.imshow("Frame", gray)
-	# update the FPS counter
-	fps.update()
+
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 		break
 
