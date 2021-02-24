@@ -93,7 +93,6 @@ while (True):
 
 		#show the frame, with detected markers
 		gray = aruco.drawDetectedMarkers(gray, corners)
-		print(gray.shape[:2])
 		imgPoints =  np.array(corners[ids[0][0]])		
 		success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
@@ -101,15 +100,15 @@ while (True):
 			#show coordinates in image output
 			font                   = cv2.FONT_HERSHEY_SIMPLEX
 			bottomLeftCornerOfText = [30,30]
-			fontScale              = 0.5
+			fontScale              = 0.7
 			fontColor              = (255,255,255)
 			lineType               = 2
 			text = "X: " + str(translation_vector[0])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
-			bottomLeftCornerOfText[1] += 20
+			bottomLeftCornerOfText[1] += 30
 			text = "Y: " + str(translation_vector[1])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
-			bottomLeftCornerOfText[1] += 20
+			bottomLeftCornerOfText[1] += 30
 			text = "Z: " + str(translation_vector[2])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
 
