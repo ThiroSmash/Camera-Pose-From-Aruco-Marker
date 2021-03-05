@@ -47,19 +47,18 @@ class WebcamVideoStream:
 ap = argparse.ArgumentParser()
 
 ap.add_argument("-p", "--port", type=int, default=0,
-	help="Puerto de cámara a utilizar (para más información, ejecute testports.py)")
+	help="Camera port (for more info, run testports.py)")
 ap.add_argument("-i", "--iterations", type=int, default=10,
-	help="Número de muestras a tomar para la calibración")
-
+	help="Amount of valid samples to require for the calibration")
 
 args = vars(ap.parse_args())
-
 
 #termination criteria
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 objp = np.zeros((6*7,3), np.float32)
 objp[:,:2] = np.mgrid[0:7,0:6].T.reshape(-1,2) * 0.79375 #real size in cm of the squares that we'll use
+
 # Arrays to store object points and image points from all the images.
 objpoints = [] # 3d point in real world space
 imgpoints = [] # 2d points in image plane.
@@ -67,50 +66,56 @@ imgpoints = [] # 2d points in image plane.
 #image size parameters
 height = 0
 width = 0
+
 # create a threaded video stream
 print("[INFO] sampling THREADED frames from webcam...")
 vs = WebcamVideoStream(src=args["port"]).start()
-# loop over some frames using the threaded stream
+
+# loop over frames until all samples are taken
 nFound = 0
 print("Grabbing chessboard samples from video stream.")
+lastSampleTime = -3
 while nFound < args["iterations"]:
-	# grab the frame from the threaded video stream and resize it
-	frame = vs.read()
-	cv2.imshow('img', frame)
-	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-	# Find the chess board corners
-	ret, corners = cv2.findChessboardCorners(gray, (7,6), None)
-	# If found, add object points, image points (after refining them)
-	if ret == True:
-		nFound = nFound + 1
-		print(nFound)
-		objpoints.append(objp)
-		corners2 = cv2.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
-		imgpoints.append(corners)
-		# Draw and display the corners
-		cv2.drawChessboardCorners(frame, (7,6), corners2, ret)
-		showFrame = imutils.resize(frame, width=600)
-		cv2.imshow('img', showFrame)
-		if nFound < args["iterations"]:
-			print("Sample saved successfully! 3 seconds until next sample...")
-			time.sleep(3)
-			print("Proceeding with next sample.")
-		else:
-			height, width = frame.shape[:2]
+	if not (lastSampleTime + 3 > time.time()):	# I realise that calling time.time() every frame is highly 
+							# ineffficient. However, time.sleep() messes up cv2's imshow 
+							# function and efficiency is not of concern for this program
+		# grab the frame from the threaded video stream
+		frame = vs.read()
+		cv2.imshow('img', frame)
+		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+		# Find the chess board corners
+		ret, corners = cv2.findChessboardCorners(gray, (7,6), None)
+		# If found, add object points, image points (after refining them)
+		if ret == True:
+			nFound = nFound + 1
+			objpoints.append(objp)
+			corners2 = cv2.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
+			imgpoints.append(corners)
+			# Draw and display the corners
+			cv2.drawChessboardCorners(frame, (7,6), corners2, ret)
+			showFrame = imutils.resize(frame, width=600)
+			cv2.imshow('img', showFrame)
+			if nFound < args["iterations"]:
+				print("Sample " + str(nFound) + " saved successfully! 3 seconds until next sample...")
+				lastSampleTime = time.time()
 
-	if cv2.waitKey(1) & 0xFF == ord('q'):
-		break
+			else:
+				height, width = frame.shape[:2]
+				print("Last sample saved successfully!")
+
+		if cv2.waitKey(1) & 0xFF == ord('q'):
+			break
 
 
 ret, mtx, dist_coeffs, trash2, trash3 = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
 if(ret): 
-	newcameramtx, trash = cv2.getOptimalNewCameraMatrix(mtx, dist_coeffs, (width,height), 1, (width,height))
+	newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist_coeffs, (width,height), 1, (width,height))
 	print("Parameters Matrix:")
 	print(mtx)
 	print("Distortion coefficients:")
 	print(dist_coeffs)
-	np.savetxt("intrinsic_parameters.txt", mtx)
-	np.savetxt("distortion_coefficients.txt", dist_coeffs)
+	#np.savetxt("intrinsic_parameters.txt", mtx)
+	#np.savetxt("distortion_coefficients.txt", dist_coeffs)
 else:
 	print("Error calculating parameters.")
 cv2.destroyAllWindows()
