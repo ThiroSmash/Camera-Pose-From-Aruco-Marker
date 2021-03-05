@@ -7,6 +7,7 @@ import imutils
 import cv2
 import cv2.aruco as aruco
 import numpy as np
+import math
 
 
 
@@ -43,6 +44,12 @@ class WebcamVideoStream:
 		# indicate that the thread should be stopped
 		self.stopped = True
 
+def camera_to_world_coords(rotation_vector, translation_vector):
+	world_coordinates = [0,0,0]
+	world_coordinates[0] = translation_vector[0]*math.cos(rotation_vector[1]) - translation_vector[2]*math.sin(rotation_vector[1])
+	world_coordinates[1] = translation_vector[1]*math.cos(rotation_vector[0]) - translation_vector[2]*math.sin(rotation_vector[0])
+	world_coordinates[2] = translation_vector[2]*math.cos(rotation_vector[1])*math.cos(rotation_vector[0]) + translation_vector[0]*math.sin(rotation_vector[1]) + translation_vector[1]*math.sin(rotation_vector[0])
+	return world_coordinates
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -60,6 +67,7 @@ vs = WebcamVideoStream(src=args["port"]).start()
 #prerequisites of aruco detection
 aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
 parameters =  aruco.DetectorParameters_create()
+parameters.cornerRefinementMethod = aruco.CORNER_REFINE_CONTOUR
 
 #read intrinsic camera parameters
 matrix = np.loadtxt("intrinsic_parameters.txt", float)
@@ -96,21 +104,30 @@ while (True):
 		imgPoints =  np.array(corners[ids[0][0]])		
 		success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
-		if(success):		
+		if(success):
+			
+			#turn rotation_vector from radians to degrees
+			rotation_vector_degrees = rotation_vector / math.pi * 180
+			#print(rotation_vector_degrees)
+			world_coordinates = camera_to_world_coords(rotation_vector, translation_vector)
+				
 			#show coordinates in image output
 			font                   = cv2.FONT_HERSHEY_SIMPLEX
 			bottomLeftCornerOfText = [30,30]
 			fontScale              = 0.7
 			fontColor              = (255,255,255)
 			lineType               = 2
-			text = "X: " + str(translation_vector[0])
+			text = "X: " + str(world_coordinates[0])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
 			bottomLeftCornerOfText[1] += 30
-			text = "Y: " + str(translation_vector[1])
+			text = "Y: " + str(world_coordinates[1])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
 			bottomLeftCornerOfText[1] += 30
-			text = "Z: " + str(translation_vector[2])
+			text = "Z: " + str(world_coordinates[2])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 30
+			#text = "Distancia: " + str(math.sqrt(translation_vector[2]) + math.sqrt(translation_vector[1]) + sqrt(translation_vector[0])
+			#cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
 
 
 	cv2.imshow("Frame", gray)
