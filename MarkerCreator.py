@@ -1,7 +1,7 @@
 import numpy as np
 import cv2, time
 import cv2.aruco as aruco
-
+import argparse
 
 
 # construct the argument parse and parse the arguments
