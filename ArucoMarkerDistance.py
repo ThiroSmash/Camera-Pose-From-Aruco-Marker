@@ -10,7 +10,6 @@ import numpy as np
 import math
 
 
-
 '''
 	WebcamVideoStream class
 	Simple class to encapsulate threaded usage of OpenCV's video capturing tools
@@ -43,7 +42,10 @@ class WebcamVideoStream:
 	def stop(self):
 		# indicate that the thread should be stopped
 		self.stopped = True
-
+'''
+	camera_to_world_coords function
+	Function to convert solvePnP's translation vector from relative to the camera's rotation to relative to the marker's rotation
+'''
 def camera_to_world_coords(rotation_vector, translation_vector):
 	world_coordinates = [0,0,0]
 	world_coordinates[0] = translation_vector[0]*math.cos(rotation_vector[1]) - translation_vector[2]*math.sin(rotation_vector[1])
@@ -54,11 +56,9 @@ def camera_to_world_coords(rotation_vector, translation_vector):
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--port", type=int, default=0,
-	help="Puerto de cámara a utilizar (para más información, ejecute testports.py)")
+	help="Camera port to use (for more info, run testports.py)")
 
 args = vars(ap.parse_args())
-
-
 
 #create a threaded video stream
 print("Initialising webcam and parameters...")
@@ -106,9 +106,6 @@ while (True):
 
 		if(success):
 			
-			#turn rotation_vector from radians to degrees
-			rotation_vector_degrees = rotation_vector / math.pi * 180
-			#print(rotation_vector_degrees)
 			world_coordinates = camera_to_world_coords(rotation_vector, translation_vector)
 				
 			#show coordinates in image output
@@ -117,6 +114,9 @@ while (True):
 			fontScale              = 0.7
 			fontColor              = (255,255,255)
 			lineType               = 2
+			text = "Coordinates (cm):"
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 30
 			text = "X: " + str(world_coordinates[0])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
 			bottomLeftCornerOfText[1] += 30
@@ -125,9 +125,24 @@ while (True):
 			bottomLeftCornerOfText[1] += 30
 			text = "Z: " + str(world_coordinates[2])
 			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 40
+
+			#turn rotation_vector from radians to degrees
+			rotation_vector_degrees = rotation_vector / math.pi * 180
+			
+			#show angles
+			text = "Rotation (degrees):"
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
 			bottomLeftCornerOfText[1] += 30
-			#text = "Distancia: " + str(math.sqrt(translation_vector[2]) + math.sqrt(translation_vector[1]) + sqrt(translation_vector[0])
-			#cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			text = "X: " + str(rotation_vector_degrees[0])
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 30
+			text = "Y: " + str(rotation_vector_degrees[1])
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 30
+			text = "Z: " + str(rotation_vector_degrees[2])
+			cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+			bottomLeftCornerOfText[1] += 30
 
 
 	cv2.imshow("Frame", gray)
@@ -135,6 +150,6 @@ while (True):
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 		break
 
-# do a bit of cleanup
+# cleanup
 cv2.destroyAllWindows()
 vs.stop()
