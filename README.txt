@@ -4,7 +4,7 @@ Python 3.9.1+
 numpy 1.19.3+
 imutils 0.5.3+
 OpenCV with extended modules for python 4.4+
-	-A pre-compiled but unsupported version of OpenCV can be quickly installed with pip, it is compatible with this program.
+
 
 	USE INSTRUCTIONS
 
