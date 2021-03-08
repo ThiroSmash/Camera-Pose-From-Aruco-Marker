@@ -75,6 +75,7 @@ vs = WebcamVideoStream(src=args["port"]).start()
 nFound = 0
 print("Grabbing chessboard samples from video stream.")
 lastSampleTime = -3
+reprojSample = None
 while nFound < args["iterations"]:
 	if not (lastSampleTime + 3 > time.time()):	# I realise that calling time.time() every frame is highly 
 							# ineffficient. However, time.sleep() messes up cv2's imshow 
@@ -101,22 +102,44 @@ while nFound < args["iterations"]:
 
 			else:
 				height, width = frame.shape[:2]
+				reprojSample = frame
 				print("Last sample saved successfully!")
 
 		if cv2.waitKey(1) & 0xFF == ord('q'):
 			break
 
 
-ret, mtx, dist_coeffs, trash2, trash3 = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
+ret, mtx, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
 if(ret): 
 	newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist_coeffs, (width,height), 1, (width,height))
 	print("Parameters Matrix:")
 	print(mtx)
 	print("Distortion coefficients:")
 	print(dist_coeffs)
-	#np.savetxt("intrinsic_parameters.txt", mtx)
-	#np.savetxt("distortion_coefficients.txt", dist_coeffs)
+	np.savetxt("intrinsic_parameters.txt", mtx)
+	np.savetxt("distortion_coefficients.txt", dist_coeffs)
+
+	#Error calculation of the estimated parameters
+	#Undistortion
+	dst = cv2.undistort(reprojSample, mtx, dist_coeffs, None, newcameramtx)
+		
+	x, y, w, h = roi
+	dst = dst[y:y+h, x:x+w]
+	cv2.imshow('Undistorted sample', dst)
+
+	#Re-projection error
+	meanError = 0
+	for i in range(len(objpoints)):
+		imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist_coeffs)
+		error = cv2.norm(imgpoints[i], imgpoints2, cv2.NORM_L2)/len(imgpoints2)
+		meanError += error
+	print("Total error: {}".format(meanError/len(objpoints)))
+
 else:
 	print("Error calculating parameters.")
+
+print("Press Q to exit")
+while not( cv2.waitKey(1) & 0xFF == ord('q') ):
+	a = 0
 cv2.destroyAllWindows()
 vs.stop()
