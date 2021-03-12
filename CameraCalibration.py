@@ -116,7 +116,8 @@ if(ret):
 	print(mtx)
 	print("Distortion coefficients:")
 	print(dist_coeffs)
-	np.savetxt("intrinsic_parameters.txt", mtx)
+	np.savetxt("camera_matrix.txt", mtx)
+	np.savetxt("refined_camera_matrix.txt", newcameramtx)
 	np.savetxt("distortion_coefficients.txt", dist_coeffs)
 
 	#Error calculation of the estimated parameters
