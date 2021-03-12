@@ -67,10 +67,11 @@ vs = WebcamVideoStream(src=args["port"]).start()
 #prerequisites of aruco detection
 aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
 parameters =  aruco.DetectorParameters_create()
-parameters.cornerRefinementMethod = aruco.CORNER_REFINE_CONTOUR
+parameters.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
 
 #read intrinsic camera parameters
-matrix = np.loadtxt("intrinsic_parameters.txt", float)
+matrix = np.loadtxt("camera_matrix.txt", float)
+refinedMatrix = np.loadtxt("refined_camera_matrix.txt", float)
 focalLengthX = matrix[0][0]
 
 #Real width of our markers is 6.35 cm
@@ -94,15 +95,15 @@ while (True):
 
 	# detect aruco markers in the frame
 	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-	corners, ids, rejectedImgPoints = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
+	corners, ids, rejectedImgPoints = aruco.detectMarkers(gray, aruco_dict, parameters=parameters, cameraMatrix=refinedMatrix, distCoeff=dist_coeffs)
 
-	#if a marker has been detected, calculate distance to it
+	#if a marker has been detected after undistortion
 	if(not(ids==None)):
-
+		
 		#show the frame, with detected markers
 		gray = aruco.drawDetectedMarkers(gray, corners)
 		imgPoints =  np.array(corners[ids[0][0]])		
-		success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+		success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, refinedMatrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
 		if(success):
 			
