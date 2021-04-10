@@ -42,6 +42,8 @@ class WebcamVideoStream:
 	def stop(self):
 		# indicate that the thread should be stopped
 		self.stopped = True
+
+
 '''
 	camera_to_world_coords function
 	Function to convert solvePnP's translation vector from relative to the camera's rotation to relative to the marker's rotation
@@ -52,6 +54,9 @@ def camera_to_world_coords(rotation_vector, translation_vector):
 	world_coordinates[1] = translation_vector[1]*math.cos(rotation_vector[0]) - translation_vector[2]*math.sin(rotation_vector[0])
 	world_coordinates[2] = translation_vector[2]*math.cos(rotation_vector[1])*math.cos(rotation_vector[0]) + translation_vector[0]*math.sin(rotation_vector[1]) + translation_vector[1]*math.sin(rotation_vector[0])
 	return world_coordinates
+
+
+
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -68,14 +73,10 @@ vs = WebcamVideoStream(src=args["port"]).start()
 aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
 parameters =  aruco.DetectorParameters_create()
 parameters.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
-
 #read intrinsic camera parameters
 matrix = np.loadtxt("camera_matrix.txt", float)
 refinedMatrix = np.loadtxt("refined_camera_matrix.txt", float)
 focalLengthX = matrix[0][0]
-
-#Real width of our markers is 6.35 cm
-realWidth = 6.35
 
 #Marker corners coordinates
 objPoints = np.array([
@@ -99,6 +100,8 @@ while (True):
 
 	#if a marker has been detected after undistortion
 	if(not(ids==None)):
+
+		print(corners)
 		
 		#show the frame, with detected markers
 		gray = aruco.drawDetectedMarkers(gray, corners)
@@ -106,7 +109,9 @@ while (True):
 		success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, refinedMatrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 
 		if(success):
-			
+			rotation_vector[0] = -rotation_vector[0]
+			translation_vector[0] = -translation_vector[0]
+			translation_vector[1] = -translation_vector[1]
 			world_coordinates = camera_to_world_coords(rotation_vector, translation_vector)
 				
 			#show coordinates in image output
