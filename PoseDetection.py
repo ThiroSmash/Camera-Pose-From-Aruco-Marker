@@ -73,8 +73,8 @@ class PoseDetector:
 		self.dist_coeffs = np.loadtxt("distortion_coefficients.txt",float)
 		#Marker corners coordinates
 		mtx = np.loadtxt("markerPoints.txt")
-		self.objPoints = np.array(mtx[:,0:3])
-		self.ids = mtx[::4,3]
+		self.markerPoints = np.array(mtx[:,0:3])
+		self.markerIds = mtx[::4,3]
 		self.maxSuccesses = maxSuccesses
 
 	def processFrame(self):
@@ -94,12 +94,27 @@ class PoseDetector:
 		trans_vector = []
 
 		#if a marker has been detected
-		if(not(ids==None)):
+
+		if(ids is not None):
+			#create objPoints depending on which markers were detected, respecting
+			#the order of 'corners' and 'ids'
+			objPoints = np.empty((0,3),float)
+			imgPoints = np.empty((0,2), float)
+			counter = 0
+			for i in ids:
+				#self.markerIds may be unordered, so we must find the index of each id
+				pos = np.where(self.markerIds == i[0])[0][0] #the reason for these brackets is to undo numpy's return of array of arrays
+				#extract the corresponding points of the id
+				markerIPoints = self.markerPoints[pos*4:(pos+1)*4][:]
+				#insert the matrix into our final objPoints
+				objPoints = np.vstack((objPoints, markerIPoints))
+				imgPoints = np.vstack((imgPoints, corners[counter][0]))
+				counter = counter+1
 
 			#show the frame, with detected markers
 			gray = aruco.drawDetectedMarkers(gray, corners)
-			imgPoints =  np.array(corners[ids[0][0]])
-			success, rotation_vector, translation_vector = cv2.solvePnP(self.objPoints, imgPoints, self.refinedMatrix, self.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+
+			success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, self.refinedMatrix, self.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 			translation_vector.mean()
 			if(success):
 				rotation_vector[0] = -rotation_vector[0]
@@ -119,7 +134,6 @@ class PoseDetector:
 	def video(self):
 		while (True):
 			success, world_coordinates, rotation_vector, translation_vector, gray = self.processFrame()
-			print(world_coordinates[0])
 			#show data in output image
 			if(success):
 				#show coordinates in image output
