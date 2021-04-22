@@ -44,5 +44,3 @@ In video mode it will simply calculate the camera pose and show the results in-r
 Once Enter is pressed, the program will take a few image samples (ten by default, can be customised with --maxSuccesses or -x), calculate the mean position of the camera from all the samples, and then calculate the error relative to the pose defined by the user. Repeat until all poses have been iterated through.
 The error results will be printed into a file "results.txt", where each row corresponds to the same row in "camera_points.txt".
 The purpose of snapshot mode is to easily and quickly produce dozens of pose estimation errors, for a better reflection of the program's precision.
-
-	To-do: Have the program show through default output stream the values of the next camera pose. Notify the user when a marker hasn't been detected in a pose, and offer options to try again or ignore said pose.

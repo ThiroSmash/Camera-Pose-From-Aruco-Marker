@@ -56,7 +56,7 @@ class WebcamVideoStream:
 
 
 class PoseDetector:
-	def __init__(self, port=0, maxSuccesses=10):
+	def __init__(self, port=0, maxSuccesses=10, inverseXY=True):
 
 		#create a threaded video stream
 		self.vs = WebcamVideoStream(src=args["port"]).start()
@@ -72,10 +72,11 @@ class PoseDetector:
 		self.focalLengthX = self.matrix[0][0]
 		self.dist_coeffs = np.loadtxt("distortion_coefficients.txt",float)
 		#Marker corners coordinates
-		mtx = np.loadtxt("markerPoints.txt")
+		mtx = np.loadtxt("marker_points.txt")
 		self.markerPoints = np.array(mtx[:,0:3])
 		self.markerIds = mtx[::4,3]
 		self.maxSuccesses = maxSuccesses
+		self.inverseXY = inverseXY
 
 	def processFrame(self):
 		# grab the frame from the threaded video stream
@@ -108,6 +109,7 @@ class PoseDetector:
 				markerIPoints = self.markerPoints[pos*4:(pos+1)*4][:]
 				#insert the matrix into our final objPoints
 				objPoints = np.vstack((objPoints, markerIPoints))
+				#insert the corresponding detected corners into imgPoints
 				imgPoints = np.vstack((imgPoints, corners[counter][0]))
 				counter = counter+1
 
@@ -117,8 +119,14 @@ class PoseDetector:
 			success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, self.refinedMatrix, self.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 			translation_vector.mean()
 			if(success):
+				#solvePnP's x-axis rotation angle is of opposite sign relative to the Y coordinate
 				rotation_vector[0] = -rotation_vector[0]
 				world_coordinates = self.camera_to_world_coords(rotation_vector, translation_vector)
+
+				if(self.inverseXY):
+					world_coordinates[0] = -world_coordinates[0]
+					world_coordinates[1] = -world_coordinates[1]
+
 				#turn rotation_vector from radians to degrees
 				rotation_vector = rotation_vector / math.pi * 180
 
@@ -189,31 +197,66 @@ class PoseDetector:
 				break
 
 	def snapshots(self):
-		realCoordinatesArray = np.loadtxt("cameraPoints.txt")
-		assert len(realCoordinatesArray[0]) == 6
+		realCoordinatesMatrix = np.loadtxt("camera_points.txt")
+		assert len(realCoordinatesMatrix[0]) == 6
 		errorsArray = []
-		nPoints = len(realCoordinatesArray)
+		nPoints = len(realCoordinatesMatrix)
 
 		for i in range(nPoints):
 			successes = 0
 			errors_i = []
-			input("Press Enter to continue...")
-			#take multiple shots of the point in question
+			print("")
+			print("Next pose:")
+			print("X: " + str(realCoordinatesMatrix[i][0]))
+			print("Y: " + str(realCoordinatesMatrix[i][1]))
+			print("Z: " + str(realCoordinatesMatrix[i][2]))
+			print("X-axis angle: " + str(realCoordinatesMatrix[i][3]))
+			print("Y-axis angle: " + str(realCoordinatesMatrix[i][4]))
+			print("Z-axis angle: " + str(realCoordinatesMatrix[i][5]))
+			print("")
+			input("Position camera and press Enter to continue.")
+			print("")
+			#take multiple shots of the point in question. if marker can't be detected, notify user
+			failures = 0
+			failed = False
 			while(successes < self.maxSuccesses):
 				success, world_coordinates, rotation_vector, translation_vector, frame = self.processFrame()
 				if(success):
-					calculatedCoordinate = world_coordinates + rotation_vector
+					failures = 0
+					calculatedCoordinates = world_coordinates + rotation_vector
 					successes += 1
-					error = realCoordinatesArray[i] - calculatedCoordinate
+					error = realCoordinatesMatrix[i] - calculatedCoordinates
 					errors_i.append(error)
+				else:
+					failures = failures + 1
+				if(failures >= 20):
+					inp = input("Could not detect a marker from this pose. Would you like to try again? [y/n]:")
+					print("")
+					if(inp == 'n'):
+						print("Skipping current pose. Result will be filled with '404' for this pose.")
+						failed = True
+						break
+					else:
+						if(inp == 'y'):
+							failures = 0
+							input("Reposition camera and press Enter to continue.")
+							print("")
+						else:
+							print("Sorry, could not recognise answer. Trying one more sample...")
+							print("")
 
-			#calculate mean of each coordinate from all shots taken
-			meanError = np.mean(errors_i, axis=0)
-			#add result to errors array
-			errorsArray.append(meanError)
-
+			if(not failed):
+				#calculate mean of each coordinate from all shots taken
+				meanError = np.mean(errors_i, axis=0)
+				#add result to errors array
+				errorsArray.append(meanError)
+			else:
+				failedArray = [404,404,404,404,404,404]
+				errorsArray.append(failedArray)
 		#save results in txt
 		np.savetxt("results.txt", errorsArray)
+		print("")
+		print("Estimation errors successfully saved in results.txt")
 
 	def stop(self):
 		self.vs.stop()
@@ -231,22 +274,29 @@ class PoseDetector:
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--port", type=int, default=0,
-	help="Camera port to use (for more info, run testports.py)")
-ap.add_argument("-m", "--mode", type=int, default=0,
-	help="Mode to execute the program: 0 = video mode (outputs video with coordinates), 1 = snapshots mode (requires cameraPoints.txt, outputs errors in results.txt)")
+	help="Camera port to use (for more info, run testports.py), port 0 by default")
+#ap.add_argument("-m", "--mode", type=int, default=0,
+#	help="Mode to execute the program: 0 = video mode (outputs video with coordinates), 1 = snapshots mode (requires camera_points.txt, outputs estimation errors in results.txt)")
 ap.add_argument("-x", "--maxSuccesses", type=int, default=10,
-	help="Number of required successful frames for each shot in snapshot mode")
+	help="Number of required successful frames for each shot in snapshot mode, 10 by default")
+#ap.add_argument("-i", "--inverseXY", type=int, default=1,
+#	help="Inverse X and Y coordinate outputs for easier read")
+
+ap.add_argument("-i", "--inverseXY", default=True, action='store_false',
+	help="X and Y coordinates are by default positive right, down directions. Select this option for them to match cv2's real outputs.")
+ap.add_argument("-s", "--snapshot", default=False, action='store_true',
+	help="Turns on snapshot mode (requires camera_points.txt, outputs estimation errors in results.txt)")
+
 
 args = vars(ap.parse_args())
 
-pd = PoseDetector(args['port'], args['maxSuccesses'])
+pd = PoseDetector(args['port'], args['maxSuccesses'], args['inverseXY'])
 
-if(args['mode']==0):
+if(not args['snapshot']):
 	pd.video()
 else:
-	if(args['mode']==1):
-		pd.snapshots()
+	pd.snapshots()
+
+print("Closing software...")
 pd.stop()
-print("Ending...")
-# cleanup
 cv2.destroyAllWindows()
