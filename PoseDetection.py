@@ -93,6 +93,7 @@ class PoseDetector:
 		world_coordinates = []
 		rot_vector = []
 		trans_vector = []
+		retIds = []
 
 		#if a marker has been detected
 
@@ -112,6 +113,7 @@ class PoseDetector:
 				#insert the corresponding detected corners into imgPoints
 				imgPoints = np.vstack((imgPoints, corners[counter][0]))
 				counter = counter+1
+				retIds.append(i)
 
 			#show the frame, with detected markers
 			gray = aruco.drawDetectedMarkers(gray, corners)
@@ -135,13 +137,13 @@ class PoseDetector:
 					rot_vector.append((rotation_vector[i]).item())
 					trans_vector.append((translation_vector[i]).item())
 
-		return success, world_coordinates, rot_vector, trans_vector, gray
+		return success, world_coordinates, rot_vector, trans_vector, retIds, gray
 
 
 
 	def video(self):
 		while (True):
-			success, world_coordinates, rotation_vector, translation_vector, gray = self.processFrame()
+			success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, gray = self.processFrame()
 			#show data in output image
 			if(success):
 				#show coordinates in image output
@@ -201,7 +203,7 @@ class PoseDetector:
 		assert len(realCoordinatesMatrix[0]) == 6
 		errorsArray = []
 		nPoints = len(realCoordinatesMatrix)
-
+		finalDetectedMarkers = []
 		for i in range(nPoints):
 			successes = 0
 			errors_i = []
@@ -220,20 +222,25 @@ class PoseDetector:
 			failures = 0
 			failed = False
 			while(successes < self.maxSuccesses):
-				success, world_coordinates, rotation_vector, translation_vector, frame = self.processFrame()
+				success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, frame = self.processFrame()
 				if(success):
 					failures = 0
 					calculatedCoordinates = world_coordinates + rotation_vector
 					successes += 1
 					error = realCoordinatesMatrix[i] - calculatedCoordinates
 					errors_i.append(error)
+					#Check and store whether new markers have been detected
+					for id in detectedMarkers:
+						if id not in finalDetectedMarkers:
+							finalDetectedMarkers.append(id)
+
 				else:
 					failures = failures + 1
 				if(failures >= 20):
 					inp = input("Could not detect a marker from this pose. Would you like to try again? [y/n]:")
 					print("")
 					if(inp == 'n'):
-						print("Skipping current pose. Result will be filled with '404' for this pose.")
+						print("Skipping current pose. Result will be filled with '-' for this pose.")
 						failed = True
 						break
 					else:
@@ -248,13 +255,61 @@ class PoseDetector:
 			if(not failed):
 				#calculate mean of each coordinate from all shots taken
 				meanError = np.mean(errors_i, axis=0)
+
+				for i in range(6):
+					meanError[i] = round(meanError[i], 3)
+
 				#add result to errors array
 				errorsArray.append(meanError)
 			else:
-				failedArray = [404,404,404,404,404,404]
+				failedArray = ['-','-','-','-','-','-']
 				errorsArray.append(failedArray)
+
+
 		#save results in txt
-		np.savetxt("results.txt", errorsArray)
+
+		file = open("results.txt", "a")
+
+		file.write("\nMarker definitions:\n")
+
+		markersList = self.markerPoints.tolist()
+
+		for i in range(len(markersList)):
+			strPoint = [str(point) for point in markersList[i]]
+			joinPoints = " ".join(strPoint)
+			file.write(str(int(self.markerIds[math.trunc(i/4)])) + ": ")
+			file.writelines(joinPoints)
+			file.write("\n")
+
+		file.write("\nFinal detected markers:\n")
+
+		strId = [str(id[0]) for id in finalDetectedMarkers]
+		joinId = " ".join(strId)
+		file.writelines(joinId)
+		file.write("\n")
+
+		file.write("\nPose definitions:\n")
+
+		posesList = realCoordinatesMatrix.tolist()
+
+		for i in range(len(posesList)):
+			strPoint = [str(point) for point in posesList[i]]
+			joinPoints = " ".join(strPoint)
+			file.write(str(i+1) + ": ")
+			file.writelines(joinPoints)
+			file.write("\n")
+
+		file.write("\nEstimation errors:\n")
+
+		for i in range(nPoints):
+			strPoint = [str(point) for point in errorsArray[i]]
+			joinPoints = " ".join(strPoint)
+
+			file.write(str(i+1) + ": ")
+			file.writelines(joinPoints)
+			file.write("\n")
+
+		file.close()
 		print("")
 		print("Estimation errors successfully saved in results.txt")
 
