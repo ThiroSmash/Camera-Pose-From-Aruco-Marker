@@ -56,10 +56,10 @@ class WebcamVideoStream:
 
 
 class PoseDetector:
-	def __init__(self, port=0, maxSuccesses=10, inverseXY=True):
+	def __init__(self, port=0, maxSuccesses=10, inverseX=True, inverseY=False, inverseZ=False, inverseXAngle=False, inverseYAngle=True, inverseZAngle=True, raw=False, showOriginals=False):
 
 		#create a threaded video stream
-		self.vs = WebcamVideoStream(src=args["port"]).start()
+		self.vs = WebcamVideoStream(src=port).start()
 
 		#prerequisites of aruco detection
 		self.aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
@@ -76,7 +76,14 @@ class PoseDetector:
 		self.markerPoints = np.array(mtx[:,0:3])
 		self.markerIds = mtx[::4,3]
 		self.maxSuccesses = maxSuccesses
-		self.inverseXY = inverseXY
+		self.inverseX = inverseX
+		self.inverseY = inverseY
+		self.inverseZ = inverseZ
+		self.inverseXAngle = inverseXAngle
+		self.inverseYAngle = inverseYAngle
+		self.inverseZAngle = inverseZAngle
+		self.outputRaw = raw
+		self.showOriginals = showOriginals
 
 	def processFrame(self):
 		# grab the frame from the threaded video stream
@@ -125,12 +132,26 @@ class PoseDetector:
 				rotation_vector[0] = -rotation_vector[0]
 				world_coordinates = self.camera_to_world_coords(rotation_vector, translation_vector)
 
-				if(self.inverseXY):
+				if(self.inverseX):
 					world_coordinates[0] = -world_coordinates[0]
+
+				if(self.inverseY):
 					world_coordinates[1] = -world_coordinates[1]
+
+				if(self.inverseZ):
+					world_coordinates[2] = -world_coordinates[2]
 
 				#turn rotation_vector from radians to degrees
 				rotation_vector = rotation_vector / math.pi * 180
+
+				if(self.inverseXAngle):
+					rotation_vector[0] = -rotation_vector[0]
+
+				if(self.inverseYAngle):
+					rotation_vector[1] = -rotation_vector[1]
+
+				if(self.inverseZAngle):
+					rotation_vector[2] = -rotation_vector[2]
 
 				#build output arrays
 				for i in range(3):
@@ -146,6 +167,12 @@ class PoseDetector:
 			success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, gray = self.processFrame()
 			#show data in output image
 			if(success):
+
+				#Round outputs to 3 decimals
+				for i in range(3):
+					world_coordinates[i] = round(world_coordinates[i], 3)
+					rotation_vector[i] = round(rotation_vector[i], 3)
+					translation_vector[i] = round(translation_vector[i], 3)
 				#show coordinates in image output
 				font                   = cv2.FONT_HERSHEY_SIMPLEX
 				bottomLeftCornerOfText = [30,30]
@@ -178,20 +205,21 @@ class PoseDetector:
 				text = "Z: " + str(rotation_vector[2])
 				cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
 
-				#show coordinates relative to rotation
-				bottomLeftCornerOfText = [300, 30]
-				text = "Relative coords:"
-				cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
-				bottomLeftCornerOfText[1] += 30
-				text = "X: " + str(translation_vector[0])
-				cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
-				bottomLeftCornerOfText[1] += 30
-				text = "Y: " + str(translation_vector[1])
-				cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
-				bottomLeftCornerOfText[1] += 30
-				text = "Z: " + str(translation_vector[2])
-				cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
-				bottomLeftCornerOfText[1] += 30
+				if(self.showOriginals):
+					#show original coordinates from OpenCV
+					bottomLeftCornerOfText = [300, 30]
+					text = "Original coords:"
+					cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+					bottomLeftCornerOfText[1] += 30
+					text = "X: " + str(translation_vector[0])
+					cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+					bottomLeftCornerOfText[1] += 30
+					text = "Y: " + str(translation_vector[1])
+					cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+					bottomLeftCornerOfText[1] += 30
+					text = "Z: " + str(translation_vector[2])
+					cv2.putText(gray, text, tuple(bottomLeftCornerOfText), font, fontScale, fontColor, lineType)
+					bottomLeftCornerOfText[1] += 30
 
 			cv2.imshow("Frame", gray)
 
@@ -270,44 +298,53 @@ class PoseDetector:
 
 		file = open("results.txt", "a")
 
-		file.write("\nMarker definitions:\n")
+		if(not self.outputRaw):
 
-		markersList = self.markerPoints.tolist()
+			file.write("\nMarker definitions:\n")
 
-		for i in range(len(markersList)):
-			strPoint = [str(point) for point in markersList[i]]
-			joinPoints = " ".join(strPoint)
-			file.write(str(int(self.markerIds[math.trunc(i/4)])) + ": ")
-			file.writelines(joinPoints)
+			markersList = self.markerPoints.tolist()
+
+			for i in range(len(markersList)):
+				strPoint = [str(point) for point in markersList[i]]
+				joinPoints = " ".join(strPoint)
+				file.write(str(int(self.markerIds[math.trunc(i/4)])) + ": ")
+				file.writelines(joinPoints)
+				file.write("\n")
+
+			file.write("\nFinal detected markers:\n")
+
+			strId = [str(id[0]) for id in finalDetectedMarkers]
+			joinId = " ".join(strId)
+			file.writelines(joinId)
 			file.write("\n")
 
-		file.write("\nFinal detected markers:\n")
+			file.write("\nPose definitions:\n")
 
-		strId = [str(id[0]) for id in finalDetectedMarkers]
-		joinId = " ".join(strId)
-		file.writelines(joinId)
-		file.write("\n")
+			posesList = realCoordinatesMatrix.tolist()
 
-		file.write("\nPose definitions:\n")
+			for i in range(len(posesList)):
+				strPoint = [str(point) for point in posesList[i]]
+				joinPoints = " ".join(strPoint)
+				file.write(str(i+1) + ": ")
+				file.writelines(joinPoints)
+				file.write("\n")
 
-		posesList = realCoordinatesMatrix.tolist()
+			file.write("\nEstimation errors:\n")
 
-		for i in range(len(posesList)):
-			strPoint = [str(point) for point in posesList[i]]
-			joinPoints = " ".join(strPoint)
-			file.write(str(i+1) + ": ")
-			file.writelines(joinPoints)
-			file.write("\n")
+			for i in range(nPoints):
+				strPoint = [str(point) for point in errorsArray[i]]
+				joinPoints = " ".join(strPoint)
 
-		file.write("\nEstimation errors:\n")
+				file.write(str(i+1) + ": ")
+				file.writelines(joinPoints)
+				file.write("\n")
 
-		for i in range(nPoints):
-			strPoint = [str(point) for point in errorsArray[i]]
-			joinPoints = " ".join(strPoint)
-
-			file.write(str(i+1) + ": ")
-			file.writelines(joinPoints)
-			file.write("\n")
+		else:
+			for i in range(nPoints):
+				strPoint = [str(point) for point in errorsArray[i]]
+				joinPoints = " ".join(strPoint)
+				file.writelines(joinPoints)
+				file.write("\n")
 
 		file.close()
 		print("")
@@ -328,26 +365,44 @@ class PoseDetector:
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
-ap.add_argument("-p", "--port", type=int, default=0,
+ap.add_argument("-p", "--Port", type=int, default=0,
 	help="Camera port to use (for more info, run testports.py), port 0 by default")
-#ap.add_argument("-m", "--mode", type=int, default=0,
-#	help="Mode to execute the program: 0 = video mode (outputs video with coordinates), 1 = snapshots mode (requires camera_points.txt, outputs estimation errors in results.txt)")
-ap.add_argument("-x", "--maxSuccesses", type=int, default=10,
-	help="Number of required successful frames for each shot in snapshot mode, 10 by default")
-#ap.add_argument("-i", "--inverseXY", type=int, default=1,
-#	help="Inverse X and Y coordinate outputs for easier read")
 
-ap.add_argument("-i", "--inverseXY", default=True, action='store_false',
-	help="X and Y coordinates are by default positive right, down directions. Select this option for them to match cv2's real outputs.")
-ap.add_argument("-s", "--snapshot", default=False, action='store_true',
+ap.add_argument("-x", "--MaxSuccesses", type=int, default=10,
+	help="Number of required successful frames for each shot in snapshot mode, 10 by default")
+
+ap.add_argument("-iX", "--InverseX", default=True, action='store_false',
+	help="Inverts X coordinate output. (Default: positive X-right, Y-up, Z-forward)")
+
+ap.add_argument("-iY", "--InverseY", default=False, action='store_true',
+	help="Inverts Y coordinate output. (Default: positive X-right, Y-up, Z-forward)")
+
+ap.add_argument("-iZ", "--InverseZ", default=False, action='store_true',
+	help="Inverts Z coordinate output. (Default: positive X-right, Y-up, Z-forward)")
+
+ap.add_argument("-iXA", "--InverseXAngle", default=False, action='store_true',
+	help="Inverts X-axis angle output. (Default: positive X-up, Y-right, Z-clockwise)")
+
+ap.add_argument("-iYA", "--InverseYAngle", default=True, action='store_false',
+	help="Inverts Y-axis angle output. (Default: positive X-up, Y-right, Z-clockwise)")
+
+ap.add_argument("-iZA", "--InverseZAngle", default=True, action='store_false',
+	help="Inverts Z-axis angle output. (Default: positive X-up, Y-right, Z-clockwise)")
+
+ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 	help="Turns on snapshot mode (requires camera_points.txt, outputs estimation errors in results.txt)")
 
+ap.add_argument("-r", "--Raw", default=False, action='store_true',
+	help="Snapshot mode outputs raw position arrays without context data")
+
+ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
+	help="Shows coordinates directly calculated by OpenCV (relative to camera's orientation)")
 
 args = vars(ap.parse_args())
 
-pd = PoseDetector(args['port'], args['maxSuccesses'], args['inverseXY'])
+pd = PoseDetector(args['Port'], args['MaxSuccesses'], args['InverseX'], args['InverseY'], args['InverseZ'], args['InverseXAngle'], args['InverseYAngle'], args['InverseZAngle'], args['Raw'], args['ShowOriginals'])
 
-if(not args['snapshot']):
+if(not args['Snapshot']):
 	pd.video()
 else:
 	pd.snapshots()
