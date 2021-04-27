@@ -10,7 +10,7 @@ OpenCV with extended modules for python 4.4+
 
 	SETUP
 First, you need "chessboard_pattern.png" and any marker created by MarkerCreator.py printed, preferably in a blank white paper.
-	The size of the images made by MarkerCreator.py is of 240x240 pixels, which translates to 6.35x6.35 cm. The markers don't need to be this size, but it has to be taken into account for correct calculations.
+	The size of the images made by MarkerCreator.py is of 120x120 pixels by default (can be changed with --size), which translates to 3.175x3.175 cm. The markers don't need to be this size, but it has to be taken into account for correct calculations.
 
 Additionally, you must create a txt file called "marker_points.txt". This file will contain a matrix with the real world points of each of the markers that you wish to use. Each row has the format:
 X Y Z ID
