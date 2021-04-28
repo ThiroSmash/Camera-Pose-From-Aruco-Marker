@@ -56,7 +56,7 @@ class WebcamVideoStream:
 
 
 class PoseDetector:
-	def __init__(self, port=0, maxSuccesses=10, inverseX=True, inverseY=False, inverseZ=False, inverseXAngle=False, inverseYAngle=True, inverseZAngle=True, raw=False, showOriginals=False):
+	def __init__(self, port=0, maxSuccesses=10, raw=False, showOriginals=False, inverseX=True, inverseY=False, inverseZ=False, inverseXAngle=False, inverseYAngle=True, inverseZAngle=True, inverseXMarker=False, inverseYMarker=True, inverseZMarker=True):
 
 		#create a threaded video stream
 		self.vs = WebcamVideoStream(src=port).start()
@@ -74,6 +74,16 @@ class PoseDetector:
 		#Marker corners coordinates
 		mtx = np.loadtxt("marker_points.txt")
 		self.markerPoints = np.array(mtx[:,0:3])
+
+		if(inverseXMarker):
+			self.markerPoints[:,0] = -self.markerPoints[:,0]
+
+		if(inverseYMarker):
+			self.markerPoints[:,1] = -self.markerPoints[:,1]
+
+		if(inverseZMarker):
+			self.markerPoints[:,2] = -self.markerPoints[:,2]
+
 		self.markerIds = mtx[::4,3]
 		self.maxSuccesses = maxSuccesses
 		self.inverseX = inverseX
@@ -372,13 +382,13 @@ ap.add_argument("-x", "--MaxSuccesses", type=int, default=10,
 	help="Number of required successful frames for each shot in snapshot mode, 10 by default")
 
 ap.add_argument("-iX", "--InverseX", default=True, action='store_false',
-	help="Inverts X coordinate output. (Default: positive X-right, Y-up, Z-forward)")
+	help="Inverts X coordinate output. (Default: positive X-right, Y-up, Z-backwards)")
 
 ap.add_argument("-iY", "--InverseY", default=False, action='store_true',
-	help="Inverts Y coordinate output. (Default: positive X-right, Y-up, Z-forward)")
+	help="Inverts Y coordinate output. (Default: positive X-right, Y-up, Z-backwards)")
 
 ap.add_argument("-iZ", "--InverseZ", default=False, action='store_true',
-	help="Inverts Z coordinate output. (Default: positive X-right, Y-up, Z-forward)")
+	help="Inverts Z coordinate output. (Default: positive X-right, Y-up, Z-backwards)")
 
 ap.add_argument("-iXA", "--InverseXAngle", default=False, action='store_true',
 	help="Inverts X-axis angle output. (Default: positive X-up, Y-right, Z-clockwise)")
@@ -388,6 +398,15 @@ ap.add_argument("-iYA", "--InverseYAngle", default=True, action='store_false',
 
 ap.add_argument("-iZA", "--InverseZAngle", default=True, action='store_false',
 	help="Inverts Z-axis angle output. (Default: positive X-up, Y-right, Z-clockwise)")
+
+ap.add_argument("-iXM", "--InverseXMarker", default=False, action='store_true',
+	help="Inverts X coordinate of marker inputs. (Default same coordinate system as default output)")
+
+ap.add_argument("-iYM", "--InverseYMarker", default=True, action='store_false',
+	help="Inverts X coordinate of marker inputs. (Default same coordinate system as default output)")
+
+ap.add_argument("-iZM", "--InverseZMarker", default=True, action='store_false',
+	help="Inverts X coordinate of marker inputs. (Default same coordinate system as default output)")
 
 ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 	help="Turns on snapshot mode (requires camera_points.txt, outputs estimation errors in results.txt)")
@@ -400,7 +419,7 @@ ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
 
 args = vars(ap.parse_args())
 
-pd = PoseDetector(args['Port'], args['MaxSuccesses'], args['InverseX'], args['InverseY'], args['InverseZ'], args['InverseXAngle'], args['InverseYAngle'], args['InverseZAngle'], args['Raw'], args['ShowOriginals'])
+pd = PoseDetector(args['Port'], args['MaxSuccesses'],  args['Raw'], args['ShowOriginals'], args['InverseX'], args['InverseY'], args['InverseZ'], args['InverseXAngle'], args['InverseYAngle'], args['InverseZAngle'], args['InverseXMarker'], args['InverseYMarker'], args['InverseZMarker'])
 
 if(not args['Snapshot']):
 	pd.video()

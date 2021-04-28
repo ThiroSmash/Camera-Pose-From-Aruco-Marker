@@ -15,7 +15,7 @@ First, you need "chessboard_pattern.png" and any marker created by MarkerCreator
 Additionally, you must create a txt file called "marker_points.txt". This file will contain a matrix with the real world points of each of the markers that you wish to use. Each row has the format:
 X Y Z ID
 to represent one corner. The rows must be ordered representing the corners clock-wise, starting top-left (so top-left, top-right, botton-right, bottom-left). Also, the four corners of each marker must be consecutive (all corners of one marker, then all corners of another marker, then all corners of another marker, etc).
-	NOTE: Remember that OpenCV treats X's right, Y's down and Z's away directions as positive when reading coordinates. Failing to respect these signs will result in wrong calculations.
+	NOTE: OpenCV treats X's right, Y's down and Z's forward directions as positive when reading coordinates. However in this program by default, it is X-right, Y-up and Z-backwards in order to align with the default output coordinate system. Any and all systems can be customised through parameters, see --help for more info.
 
 	To-do: Python file to create markerPoints.txt from user inputs
 
