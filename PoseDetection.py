@@ -75,12 +75,16 @@ class PoseDetector:
 		mtx = np.loadtxt("marker_points.txt")
 		self.markerPoints = np.array(mtx[:,0:3])
 		print(self.markerPoints)
+
+		self.inverseXMarker = inverseXMarker
 		if(inverseXMarker):
 			self.markerPoints[:,0] = -self.markerPoints[:,0]
 
+			self.inverseYMarker = inverseYMarker
 		if(inverseYMarker):
 			self.markerPoints[:,1] = -self.markerPoints[:,1]
 
+		self.inverseZMarker = inverseZMarker
 		if(inverseZMarker):
 			self.markerPoints[:,2] = -self.markerPoints[:,2]
 
@@ -183,8 +187,6 @@ class PoseDetector:
 
 		return success, world_coordinates, rot_vector, trans_vector, retIds, gray
 
-
-
 	def video(self):
 		while (True):
 			success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, gray = self.processFrame()
@@ -253,7 +255,7 @@ class PoseDetector:
 		realCoordinatesMatrix = np.loadtxt("camera_points.txt")
 		assert len(realCoordinatesMatrix[0]) == 6
 		meanErrorsArray = []
-		#rawErrorsArray = []
+		rawErrorsArray = np.empty((0,6), float)
 		nPoints = len(realCoordinatesMatrix)
 		finalDetectedMarkers = []
 		for i in range(nPoints):
@@ -308,7 +310,11 @@ class PoseDetector:
 			if(not failed):
 
 				#add raw errors to results
-				#rawErrorsArray = np.vstack((rawErrorsArray, errors_i))
+				for i in range(self.maxSuccesses):
+					for j in range(6):
+						errors_i[i][j] = round(errors_i[i][j], 3)
+
+				rawErrorsArray = np.vstack((rawErrorsArray, errors_i))
 
 				#calculate mean of each coordinate from all shots taken
 				meanError = np.mean(errors_i, axis=0)
@@ -321,6 +327,9 @@ class PoseDetector:
 			else:
 				failedArray = ['-','-','-','-','-','-']
 
+				for i in range(self.maxSuccesses):
+					rawErrorsArray.append(failedArray)
+
 				meanErrorsArray.append(failedArray)
 
 
@@ -328,6 +337,7 @@ class PoseDetector:
 
 		file = open("results.txt", "a")
 
+		#save outputs with context and filters
 		if(not self.outputRaw):
 
 			file.write("\nMarker definitions:\n")
@@ -343,7 +353,7 @@ class PoseDetector:
 
 			file.write("\nFinal detected markers:\n")
 
-			strId = [str(id[0]) for id in finalDetectedMarkers]
+			strId = [str(int(id)) for id in finalDetectedMarkers]
 			joinId = " ".join(strId)
 			file.writelines(joinId)
 			file.write("\n")
@@ -361,20 +371,35 @@ class PoseDetector:
 
 			file.write("\nEstimation errors:\n")
 
+			file.write("\nWith mean filter:\n")
+
 			for i in range(nPoints):
-				strPoint = [str(point) for point in errorsArray[i]]
+				strPoint = [str(point) for point in meanErrorsArray[i]]
 				joinPoints = " ".join(strPoint)
 
 				file.write(str(i+1) + ": ")
 				file.writelines(joinPoints)
 				file.write("\n")
 
+			file.write("\nRaw errors:\n")
+
+			for i in range(nPoints):
+				for j in range(self.maxSuccesses):
+
+					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.write(str(i+1) + "." + str(j+1) + ": ")
+					file.writelines(joinPoints)
+					file.write("\n")
+
+	    #save only raw outputs
 		else:
 			for i in range(nPoints):
-				strPoint = [str(point) for point in errorsArray[i]]
-				joinPoints = " ".join(strPoint)
-				file.writelines(joinPoints)
-				file.write("\n")
+				for j in range(self.maxSuccesses):
+					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
 
 		file.close()
 		print("")
@@ -432,10 +457,10 @@ ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 	help="Turns on snapshot mode (requires camera_points.txt, outputs estimation errors in results.txt)")
 
 ap.add_argument("-r", "--Raw", default=False, action='store_true',
-	help="Snapshot mode outputs raw position arrays without context data")
+	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
 
 ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
-	help="Shows coordinates directly calculated by OpenCV (relative to camera's orientation)")
+	help="Shows coordinates directly calculated by OpenCV (relative to camera's orientation) (only applicable in video mode)")
 
 args = vars(ap.parse_args())
 
