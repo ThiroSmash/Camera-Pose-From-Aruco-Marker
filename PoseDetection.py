@@ -74,13 +74,12 @@ class PoseDetector:
 		#Marker corners coordinates
 		mtx = np.loadtxt("marker_points.txt")
 		self.markerPoints = np.array(mtx[:,0:3])
-		print(self.markerPoints)
 
 		self.inverseXMarker = inverseXMarker
 		if(inverseXMarker):
 			self.markerPoints[:,0] = -self.markerPoints[:,0]
 
-			self.inverseYMarker = inverseYMarker
+		self.inverseYMarker = inverseYMarker
 		if(inverseYMarker):
 			self.markerPoints[:,1] = -self.markerPoints[:,1]
 
@@ -340,9 +339,43 @@ class PoseDetector:
 		#save outputs with context and filters
 		if(not self.outputRaw):
 
+
+			file.write("\nCoordinate systems:\n")
+			file.write("Markers: ")
+			if(self.inverseXMarker):
+				file.write("X-left, ")
+			else: file.write("X-right, ")
+			if(self.inverseYMarker):
+				file.write("Y-up, ")
+			else: file.write("Y-down, ")
+			if(self.inverseZMarker):
+				file.write("Z-backward")
+			else: file.write("Z-forward")
+			file.write("\nCamera coordinates: ")
+			if(self.inverseX):
+				file.write("X-right, ")
+			else: file.write("X-left, ")
+			if(self.inverseY):
+				file.write("Y-down, ")
+			else: file.write("Y-up, ")
+			if(self.inverseZ):
+				file.write("Z-forward")
+			else: file.write("Z-backward")
+			file.write("\nCamera angles: ")
+			if(self.inverseXAngle):
+				file.write("X-down, ")
+			else: file.write("X-up, ")
+			if(self.inverseYAngle):
+				file.write("Y-right, ")
+			else: file.write("Y-left, ")
+			if(self.inverseZAngle):
+				file.write("Z-clockwise\n")
+			else: file.write("Z-counterclockwise\n")
+
 			file.write("\nMarker definitions:\n")
 
-			markersList = self.markerPoints.tolist()
+			mtx = np.loadtxt("marker_points.txt")
+			markersList = np.array(mtx[:,0:3]).tolist()
 
 			for i in range(len(markersList)):
 				strPoint = [str(point) for point in markersList[i]]
