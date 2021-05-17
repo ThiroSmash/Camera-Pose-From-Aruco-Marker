@@ -74,7 +74,7 @@ class PoseDetector:
 		#Marker corners coordinates
 		mtx = np.loadtxt("marker_points.txt")
 		self.markerPoints = np.array(mtx[:,0:3])
-
+		print(self.markerPoints)
 		if(inverseXMarker):
 			self.markerPoints[:,0] = -self.markerPoints[:,0]
 
@@ -83,6 +83,8 @@ class PoseDetector:
 
 		if(inverseZMarker):
 			self.markerPoints[:,2] = -self.markerPoints[:,2]
+
+		print(self.markerPoints)
 
 		self.markerIds = mtx[::4,3]
 		self.maxSuccesses = maxSuccesses
@@ -104,7 +106,19 @@ class PoseDetector:
 
 		# detect aruco markers in the frame
 		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-		corners, ids, rejectedImgPoints = aruco.detectMarkers(gray, self.aruco_dict, parameters=self.parameters, cameraMatrix=self.refinedMatrix, distCoeff=self.dist_coeffs)
+		corners, idsM, rejectedImgPoints = aruco.detectMarkers(gray, self.aruco_dict, parameters=self.parameters, cameraMatrix=self.refinedMatrix, distCoeff=self.dist_coeffs)
+
+		#remove detected markers that aren't defined in marker_points.txt, and change format to array from matrix
+		ids = []
+		if(idsM is not None):
+			#change ids format to array
+			for i in idsM:
+				ids = np.append(ids, i[0])
+			#remove undefined ids
+			for i in ids:
+				if(i not in self.markerIds):
+					pos = np.where(ids == i)[0][0] #the reason for these brackets is to undo numpy's return of array of arrays
+					ids = np.delete(ids, pos)
 
 		success = False
 		world_coordinates = []
@@ -112,24 +126,23 @@ class PoseDetector:
 		trans_vector = []
 		retIds = []
 
-		#if a marker has been detected
+		#if a defined marker has been detected
+		if(len(ids) > 0):
 
-		if(ids is not None):
 			#create objPoints depending on which markers were detected, respecting
 			#the order of 'corners' and 'ids'
 			objPoints = np.empty((0,3),float)
 			imgPoints = np.empty((0,2), float)
-			counter = 0
 			for i in ids:
 				#self.markerIds may be unordered, so we must find the index of each id
-				pos = np.where(self.markerIds == i[0])[0][0] #the reason for these brackets is to undo numpy's return of array of arrays
+				pos = np.where(self.markerIds == i)[0][0]
 				#extract the corresponding points of the id
 				markerIPoints = self.markerPoints[pos*4:(pos+1)*4][:]
 				#insert the matrix into our final objPoints
 				objPoints = np.vstack((objPoints, markerIPoints))
 				#insert the corresponding detected corners into imgPoints
-				imgPoints = np.vstack((imgPoints, corners[counter][0]))
-				counter = counter+1
+				posCorner = np.where(idsM == i)[0][0]
+				imgPoints = np.vstack((imgPoints, corners[posCorner][0]))
 				retIds.append(i)
 
 			#show the frame, with detected markers
@@ -239,7 +252,8 @@ class PoseDetector:
 	def snapshots(self):
 		realCoordinatesMatrix = np.loadtxt("camera_points.txt")
 		assert len(realCoordinatesMatrix[0]) == 6
-		errorsArray = []
+		meanErrorsArray = []
+		#rawErrorsArray = []
 		nPoints = len(realCoordinatesMatrix)
 		finalDetectedMarkers = []
 		for i in range(nPoints):
@@ -274,7 +288,7 @@ class PoseDetector:
 
 				else:
 					failures = failures + 1
-				if(failures >= 20):
+				if(failures >= 100):
 					inp = input("Could not detect a marker from this pose. Would you like to try again? [y/n]:")
 					print("")
 					if(inp == 'n'):
@@ -290,7 +304,12 @@ class PoseDetector:
 							print("Sorry, could not recognise answer. Trying one more sample...")
 							print("")
 
+			#apply filters to error results
 			if(not failed):
+
+				#add raw errors to results
+				#rawErrorsArray = np.vstack((rawErrorsArray, errors_i))
+
 				#calculate mean of each coordinate from all shots taken
 				meanError = np.mean(errors_i, axis=0)
 
@@ -298,10 +317,11 @@ class PoseDetector:
 					meanError[i] = round(meanError[i], 3)
 
 				#add result to errors array
-				errorsArray.append(meanError)
+				meanErrorsArray.append(meanError)
 			else:
 				failedArray = ['-','-','-','-','-','-']
-				errorsArray.append(failedArray)
+
+				meanErrorsArray.append(failedArray)
 
 
 		#save results in txt
