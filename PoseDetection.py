@@ -250,6 +250,7 @@ class PoseDetector:
 			if cv2.waitKey(1) & 0xFF == ord('q'):
 				break
 
+
 	def snapshots(self):
 		realCoordinatesMatrix = np.loadtxt("camera_points.txt")
 		assert len(realCoordinatesMatrix[0]) == 6
@@ -307,16 +308,18 @@ class PoseDetector:
 
 			#apply filters to error results
 			if(not failed):
-
+				errors_i_abs = errors_i
 				#add raw errors to results
 				for i in range(self.maxSuccesses):
 					for j in range(6):
+						errors_i_abs[i][j] = abs(errors_i[i][j])
 						errors_i[i][j] = round(errors_i[i][j], 3)
+
 
 				rawErrorsArray = np.vstack((rawErrorsArray, errors_i))
 
 				#calculate mean of each coordinate from all shots taken
-				meanError = np.mean(errors_i, axis=0)
+				meanError = np.mean(errors_i_abs, axis=0)
 
 				for i in range(6):
 					meanError[i] = round(meanError[i], 3)
@@ -338,7 +341,6 @@ class PoseDetector:
 
 		#save outputs with context and filters
 		if(not self.outputRaw):
-
 
 			file.write("\nCoordinate systems:\n")
 			file.write("Markers: ")
