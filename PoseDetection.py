@@ -56,7 +56,7 @@ class WebcamVideoStream:
 
 
 class PoseDetector:
-	def __init__(self, port=0, maxSuccesses=10, raw=False, showOriginals=False, inverseX=True, inverseY=False, inverseZ=False, inverseXAngle=False, inverseYAngle=True, inverseZAngle=True, inverseXMarker=False, inverseYMarker=True, inverseZMarker=True):
+	def __init__(self, port=0, showOriginals=False):
 
 		#create a threaded video stream
 		self.vs = WebcamVideoStream(src=port).start()
@@ -75,6 +75,26 @@ class PoseDetector:
 		mtx = np.loadtxt("marker_points.txt")
 		self.markerPoints = np.array(mtx[:,0:3])
 
+		self.markerIds = mtx[::4,3]
+
+		self.showOriginals = showOriginals
+
+		setCoordinatesOutput()
+		setAnglesOutput()
+		setMarkersInput()
+
+
+	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
+			self.inverseX = inverseX
+			self.inverseY = inverseY
+			self.inverseZ = inverseZ
+
+	def setAnglesOutput(self, inverseXAngle = False, inverseYAngle = True, inverseZAngle = True):
+			self.inverseXAngle = inverseXAngle
+			self.inverseYAngle = inverseYAngle
+			self.inverseZAngle = inverseZAngle
+
+	def setMarkersInput(self, inverseXMarker=False, inverseYMarker=True, inverseZMarker=True):
 		self.inverseXMarker = inverseXMarker
 		if(inverseXMarker):
 			self.markerPoints[:,0] = -self.markerPoints[:,0]
@@ -87,18 +107,12 @@ class PoseDetector:
 		if(inverseZMarker):
 			self.markerPoints[:,2] = -self.markerPoints[:,2]
 
-		print(self.markerPoints)
 
-		self.markerIds = mtx[::4,3]
+	def setSnapshotConfig(self, rawOutputs=False, maxSuccesses=10, mean=False):
+		self.rawOutputs = rawOutputs
 		self.maxSuccesses = maxSuccesses
-		self.inverseX = inverseX
-		self.inverseY = inverseY
-		self.inverseZ = inverseZ
-		self.inverseXAngle = inverseXAngle
-		self.inverseYAngle = inverseYAngle
-		self.inverseZAngle = inverseZAngle
-		self.outputRaw = raw
-		self.showOriginals = showOriginals
+		self.makeMean = mean
+
 
 	def processFrame(self):
 		# grab the frame from the threaded video stream
@@ -156,7 +170,7 @@ class PoseDetector:
 			if(success):
 				#solvePnP's x-axis rotation angle is of opposite sign relative to the Y coordinate
 				rotation_vector[0] = -rotation_vector[0]
-				world_coordinates = self.camera_to_world_coords(rotation_vector, translation_vector)
+				world_coordinates = self.__camera_to_world_coords(rotation_vector, translation_vector)
 
 				if(self.inverseX):
 					world_coordinates[0] = -world_coordinates[0]
@@ -254,10 +268,10 @@ class PoseDetector:
 	def snapshots(self):
 		realCoordinatesMatrix = np.loadtxt("camera_points.txt")
 		assert len(realCoordinatesMatrix[0]) == 6
-		meanErrorsArray = []
 		rawErrorsArray = np.empty((0,6), float)
 		nPoints = len(realCoordinatesMatrix)
 		finalDetectedMarkers = []
+		successPoses = np.empty(nPoints, dtype=bool)
 		for i in range(nPoints):
 			successes = 0
 			errors_i = []
@@ -306,37 +320,26 @@ class PoseDetector:
 							print("Sorry, could not recognise answer. Trying one more sample...")
 							print("")
 
-			#apply filters to error results
-			if(not failed):
-				errors_i_abs = errors_i
-				#add raw errors to results
-				for i in range(self.maxSuccesses):
-					for j in range(6):
-						errors_i_abs[i][j] = abs(errors_i[i][j])
-						errors_i[i][j] = round(errors_i[i][j], 3)
 
+			if(not failed):
 
 				rawErrorsArray = np.vstack((rawErrorsArray, errors_i))
+				successPoses[i] = True
 
-				#calculate mean of each coordinate from all shots taken
-				meanError = np.mean(errors_i_abs, axis=0)
-
-				for i in range(6):
-					meanError[i] = round(meanError[i], 3)
-
-				#add result to errors array
-				meanErrorsArray.append(meanError)
 			else:
 				failedArray = ['-','-','-','-','-','-']
 
 				for i in range(self.maxSuccesses):
 					rawErrorsArray.append(failedArray)
+				successPoses[i] = False
 
-				meanErrorsArray.append(failedArray)
+
+			__printResults(rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers)
 
 
 		#save results in txt
 
+	def __printResults(self, rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers):
 		file = open("results.txt", "a")
 
 		#save outputs with context and filters
@@ -406,15 +409,33 @@ class PoseDetector:
 
 			file.write("\nEstimation errors:\n")
 
-			file.write("\nWith mean filter:\n")
+			#if user asked for mean values
+			if(self.makeMean):
 
-			for i in range(nPoints):
-				strPoint = [str(point) for point in meanErrorsArray[i]]
-				joinPoints = " ".join(strPoint)
+				meanErrorsArray = []
+				#for each pose
+				for i in range(nPoints):
 
-				file.write(str(i+1) + ": ")
-				file.writelines(joinPoints)
-				file.write("\n")
+					if(successPoses[i]):
+
+						#extract errors of pose
+						errors_i_abs = np.absolute(rawErrorsArray[i:i+maxSuccesses-1][:])
+						#calculate mean and round to 3 decimals
+						meanError = np.round(np.mean(errors_i_abs, axis=0), 3)
+						#add result to errors array
+						meanErrorsArray.append(meanError)
+					else:
+						meanErrorsArray.append(['-','-','-','-','-','-'])
+
+				file.write("\nWith mean filter:\n")
+
+				for i in range(nPoints):
+					strPoint = [str(point) for point in meanErrorsArray[i]]
+					joinPoints = " ".join(strPoint)
+
+					file.write(str(i+1) + ": ")
+					file.writelines(joinPoints)
+					file.write("\n")
 
 			file.write("\nRaw errors:\n")
 
@@ -443,7 +464,7 @@ class PoseDetector:
 	def stop(self):
 		self.vs.stop()
 
-	def camera_to_world_coords(self, rotation_vector, translation_vector):
+	def __camera_to_world_coords(self, rotation_vector, translation_vector):
 		world_coordinates = [0,0,0]
 
 		world_coordinates[0] = ( translation_vector[0]*math.cos(rotation_vector[1]) - translation_vector[2]*math.sin(rotation_vector[1]) ).item()
@@ -488,22 +509,28 @@ ap.add_argument("-iYM", "--InverseYMarker", default=True, action='store_false',
 ap.add_argument("-iZM", "--InverseZMarker", default=True, action='store_false',
 	help="Inverts X coordinate of marker inputs. (Default same coordinate system as default output)")
 
+ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
+		help="Shows coordinates directly calculated by OpenCV (relative to camera's orientation) (only applicable in video mode)")
+
 ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 	help="Turns on snapshot mode (requires camera_points.txt, outputs estimation errors in results.txt)")
 
-ap.add_argument("-r", "--Raw", default=False, action='store_true',
+ap.add_argument("-r", "--RawOutputs", default=False, action='store_true',
 	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
 
-ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
-	help="Shows coordinates directly calculated by OpenCV (relative to camera's orientation) (only applicable in video mode)")
+ap.add_argument("-m", "--Mean", default=False, action='store_true',
+	help="Snapshot mode adds mean values to results (overriden by RawOutputs) (only applicable in snapshot mode)")
 
 args = vars(ap.parse_args())
 
-pd = PoseDetector(args['Port'], args['MaxSuccesses'],  args['Raw'], args['ShowOriginals'], args['InverseX'], args['InverseY'], args['InverseZ'], args['InverseXAngle'], args['InverseYAngle'], args['InverseZAngle'], args['InverseXMarker'], args['InverseYMarker'], args['InverseZMarker'])
-
+pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'])
+pd.setCoordinatesOutput(inverseX = args['InverseX'], inverseY = args['InverseY'], inverseZ = args['InverseZ'])
+pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZ = args['InverseZAngle'])
+pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = args['InverseYMarker'], inverseZMarker = args['InverseZMarker'])
 if(not args['Snapshot']):
 	pd.video()
 else:
+	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], mean=args['Mean'])
 	pd.snapshots()
 
 print("Closing software...")
