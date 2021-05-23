@@ -56,6 +56,7 @@ class WebcamVideoStream:
 
 
 class PoseDetector:
+
 	def __init__(self, port=0, showOriginals=False):
 
 		#create a threaded video stream
@@ -79,10 +80,9 @@ class PoseDetector:
 
 		self.showOriginals = showOriginals
 
-		setCoordinatesOutput()
-		setAnglesOutput()
-		setMarkersInput()
-
+		#self.setCoordinatesOutput()
+		#self.setAnglesOutput()
+		#self.setMarkersInput()
 
 	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
 			self.inverseX = inverseX
@@ -107,11 +107,10 @@ class PoseDetector:
 		if(inverseZMarker):
 			self.markerPoints[:,2] = -self.markerPoints[:,2]
 
-
-	def setSnapshotConfig(self, rawOutputs=False, maxSuccesses=10, mean=False):
+	def setSnapshotConfig(self, rawOutputs=False, maxSuccesses=10, makeStats=False):
 		self.rawOutputs = rawOutputs
 		self.maxSuccesses = maxSuccesses
-		self.makeMean = mean
+		self.makeStats = makeStats
 
 
 	def processFrame(self):
@@ -268,7 +267,8 @@ class PoseDetector:
 	def snapshots(self):
 		realCoordinatesMatrix = np.loadtxt("camera_points.txt")
 		assert len(realCoordinatesMatrix[0]) == 6
-		rawErrorsArray = np.empty((0,6), float)
+		rawErrorsArray = np.empty((0,6), dtype=float)
+		rawResultsArray = np.empty((0,6), dtype=float)
 		nPoints = len(realCoordinatesMatrix)
 		finalDetectedMarkers = []
 		successPoses = np.empty(nPoints, dtype=bool)
@@ -296,7 +296,10 @@ class PoseDetector:
 					calculatedCoordinates = world_coordinates + rotation_vector
 					successes += 1
 					error = realCoordinatesMatrix[i] - calculatedCoordinates
-					errors_i.append(error)
+					for k in range(6):
+						error[k] = round(error[k], 3)
+					rawResultsArray = np.vstack((rawResultsArray, calculatedCoordinates))
+					rawErrorsArray = np.vstack((rawErrorsArray, error))
 					#Check and store whether new markers have been detected
 					for id in detectedMarkers:
 						if id not in finalDetectedMarkers:
@@ -322,28 +325,24 @@ class PoseDetector:
 
 
 			if(not failed):
-
-				rawErrorsArray = np.vstack((rawErrorsArray, errors_i))
 				successPoses[i] = True
-
 			else:
 				failedArray = ['-','-','-','-','-','-']
-
-				for i in range(self.maxSuccesses):
-					rawErrorsArray.append(failedArray)
 				successPoses[i] = False
+				for k in range(self.maxSuccesses):
+					rawErrorsArray = np.vstack((rawErrorsArray, failedArray))
+					rawResultsArray = np.vstack((rawResultsArray, failedArray))
 
-
-			__printResults(rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers)
+		self.__printResults(rawResultsArray, rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers)
 
 
 		#save results in txt
 
-	def __printResults(self, rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers):
+	def __printResults(self, rawResultsArray, rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers):
 		file = open("results.txt", "a")
 
 		#save outputs with context and filters
-		if(not self.outputRaw):
+		if(not self.rawOutputs):
 
 			file.write("\nCoordinate systems:\n")
 			file.write("Markers: ")
@@ -409,31 +408,122 @@ class PoseDetector:
 
 			file.write("\nEstimation errors:\n")
 
-			#if user asked for mean values
-			if(self.makeMean):
+			#if user asked for statistic values
+			if(self.makeStats):
 
-				meanErrorsArray = []
+				meanErrorsArray = np.empty((0,6), dtype=float)
+				medianErrorsArray = np.empty((0,6), dtype=float)
+				stdErrorsArray = np.empty((0,6), dtype=float)
 				#for each pose
 				for i in range(nPoints):
 
+					#calculate mean and standard deviation
 					if(successPoses[i]):
-
-						#extract errors of pose
-						errors_i_abs = np.absolute(rawErrorsArray[i:i+maxSuccesses-1][:])
+						#extract results of pose
+						results_i = rawResultsArray[i*self.maxSuccesses:(i+1)*self.maxSuccesses][:].astype(np.float)
 						#calculate mean and round to 3 decimals
-						meanError = np.round(np.mean(errors_i_abs, axis=0), 3)
-						#add result to errors array
-						meanErrorsArray.append(meanError)
+						meanResult_i = np.mean(results_i, axis=0)
+						for k in range(6):
+							meanResult_i[k] = round(meanResult_i[k], 3)
+						meanError = realCoordinatesMatrix[i] - meanResult_i
+						#add result to mean errors array
+						meanErrorsArray = np.vstack((meanErrorsArray, meanError))
+
+						#calculate median and round to 3 decimals
+						medianResult_i = np.median(results_i, axis=0)
+						for k in range(6):
+							medianResult_i[k] = round(medianResult_i[k], 3)
+						medianError = realCoordinatesMatrix[i] - medianResult_i
+						#add result to median errors array
+						medianErrorsArray = np.vstack((medianErrorsArray, medianError))
+						#extract absolute errors of raw results
+						errors_i_abs = np.absolute(rawErrorsArray[i*self.maxSuccesses:(i+1)*self.maxSuccesses][:].astype(np.float))
+						#calculate standard deviation of raw errors, round to 3 decimals
+						stdError = np.std(errors_i_abs, axis=0)
+						for k in range(6):
+							stdError[k] = round(stdError[k], 3)
+						#add result to std errors array
+						stdErrorsArray = np.vstack((stdErrorsArray, stdError))
+
 					else:
-						meanErrorsArray.append(['-','-','-','-','-','-'])
+						meanErrorsArray = np.vstack((meanErrorsArray, ['-','-','-','-','-','-']))
+						medianErrorsArray = np.vstack((medianErrorsArray, ['-','-','-','-','-','-']))
+						stdErrorsArray = np.vstack((stdErrorsArray, ['-','-','-','-','-','-']))
 
 				file.write("\nWith mean filter:\n")
-
 				for i in range(nPoints):
-					strPoint = [str(point) for point in meanErrorsArray[i]]
+
+					strPoint = []
+
+					if(successPoses[i]):
+						floatPoints = [float(point) for point in meanErrorsArray[i]]
+						print(floatPoints)
+						for k in range(len(floatPoints)):
+							floatPoints[k] = round(floatPoints[k], 3)
+						print(floatPoints)
+						strPoint = [str(point) for point in floatPoints]
+					else:
+						strPoint = [str(point) for point in meanErrorsArray[i]]
+
 					joinPoints = " ".join(strPoint)
 
 					file.write(str(i+1) + ": ")
+					file.writelines(joinPoints)
+					file.write("\n")
+
+				file.write("\nWith median filter:\n")
+
+				for i in range(nPoints):
+
+					strPoint = []
+
+					if(successPoses[i]):
+						floatPoints = [float(point) for point in medianErrorsArray[i]]
+						for k in range(len(floatPoints)):
+							floatPoints[k] = round(floatPoints[k], 3)
+						strPoint = [str(point) for point in floatPoints]
+					else:
+						strPoint = [str(point) for point in meanErrorsArray[i]]
+
+					joinPoints = " ".join(strPoint)
+
+					file.write(str(i+1) + ": ")
+					file.writelines(joinPoints)
+					file.write("\n")
+
+				file.write("\nStandard deviation in each pose:\n")
+
+				for i in range(nPoints):
+
+					strPoint = []
+
+					if(successPoses[i]):
+						floatPoints = [float(point) for point in stdErrorsArray[i]]
+						for k in range(len(floatPoints)):
+							floatPoints[k] = round(floatPoints[k], 3)
+						strPoint = [str(point) for point in floatPoints]
+					else:
+						strPoint = [str(point) for point in meanErrorsArray[i]]
+
+					joinPoints = " ".join(strPoint)
+
+					file.write(str(i+1) + ": ")
+					file.writelines(joinPoints)
+					file.write("\n")
+
+			#for i in range(self.maxSuccesses*nPoints):
+			#	for j in range(6):
+
+			rawResultsArray = np.around(rawResultsArray, 3)
+
+			file.write("\nRaw results:\n")
+
+			for i in range(nPoints):
+				for j in range(self.maxSuccesses):
+
+					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.write(str(i+1) + "." + str(j+1) + ": ")
 					file.writelines(joinPoints)
 					file.write("\n")
 
@@ -447,6 +537,29 @@ class PoseDetector:
 					file.write(str(i+1) + "." + str(j+1) + ": ")
 					file.writelines(joinPoints)
 					file.write("\n")
+
+			file.write("\nRaw results:\n")
+
+			for i in range(nPoints):
+				for j in range(self.maxSuccesses):
+
+					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					#file.write(str(i+1) + "." + str(j+1) + ": ")
+					file.writelines(joinPoints)
+					file.write("\n")
+
+			file.write("\nRaw errors:\n")
+
+			for i in range(nPoints):
+				for j in range(self.maxSuccesses):
+
+					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					#file.write(str(i+1) + "." + str(j+1) + ": ")
+					file.writelines(joinPoints)
+					file.write("\n")
+
 
 	    #save only raw outputs
 		else:
@@ -518,19 +631,19 @@ ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 ap.add_argument("-r", "--RawOutputs", default=False, action='store_true',
 	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
 
-ap.add_argument("-m", "--Mean", default=False, action='store_true',
-	help="Snapshot mode adds mean values to results (overriden by RawOutputs) (only applicable in snapshot mode)")
+ap.add_argument("-st", "--MakeStats", default=False, action='store_true',
+	help="Snapshot mode adds median, mean and standard deviation to results (overriden by RawOutputs) (only applicable in snapshot mode)")
 
 args = vars(ap.parse_args())
 
 pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'])
 pd.setCoordinatesOutput(inverseX = args['InverseX'], inverseY = args['InverseY'], inverseZ = args['InverseZ'])
-pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZ = args['InverseZAngle'])
+pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZAngle = args['InverseZAngle'])
 pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = args['InverseYMarker'], inverseZMarker = args['InverseZMarker'])
 if(not args['Snapshot']):
 	pd.video()
 else:
-	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], mean=args['Mean'])
+	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], makeStats=args['MakeStats'])
 	pd.snapshots()
 
 print("Closing software...")
