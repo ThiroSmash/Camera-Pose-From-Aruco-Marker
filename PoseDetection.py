@@ -80,10 +80,6 @@ class PoseDetector:
 
 		self.showOriginals = showOriginals
 
-		#self.setCoordinatesOutput()
-		#self.setAnglesOutput()
-		#self.setMarkersInput()
-
 	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
 			self.inverseX = inverseX
 			self.inverseY = inverseY
@@ -94,7 +90,7 @@ class PoseDetector:
 			self.inverseYAngle = inverseYAngle
 			self.inverseZAngle = inverseZAngle
 
-	def setMarkersInput(self, inverseXMarker=False, inverseYMarker=True, inverseZMarker=True):
+	def setMarkersInput(self, inverseXMarker = False, inverseYMarker = True, inverseZMarker = True):
 		self.inverseXMarker = inverseXMarker
 		if(inverseXMarker):
 			self.markerPoints[:,0] = -self.markerPoints[:,0]
@@ -107,11 +103,9 @@ class PoseDetector:
 		if(inverseZMarker):
 			self.markerPoints[:,2] = -self.markerPoints[:,2]
 
-	def setSnapshotConfig(self, rawOutputs=False, maxSuccesses=10, makeStats=False):
+	def setSnapshotConfig(self, rawOutputs=False, maxSuccesses=10):
 		self.rawOutputs = rawOutputs
 		self.maxSuccesses = maxSuccesses
-		self.makeStats = makeStats
-
 
 	def processFrame(self):
 		# grab the frame from the threaded video stream
@@ -285,13 +279,16 @@ class PoseDetector:
 			print("Z-axis angle: " + str(realCoordinatesMatrix[i][5]))
 			print("")
 			input("Position camera and press Enter to continue.")
+			print("Taking samples...")
 			print("")
 			#take multiple shots of the point in question. if marker can't be detected, notify user
 			failures = 0
+			maxMarkers = 0
 			failed = False
 			while(successes < self.maxSuccesses):
 				success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, frame = self.processFrame()
-				if(success):
+				if(success and len(detectedMarkers) >= maxMarkers):
+					maxMarkers = len(detectedMarkers)
 					failures = 0
 					calculatedCoordinates = world_coordinates + rotation_vector
 					successes += 1
@@ -307,7 +304,7 @@ class PoseDetector:
 
 				else:
 					failures = failures + 1
-				if(failures >= 100):
+				if(failures >= 500):
 					inp = input("Could not detect a marker from this pose. Would you like to try again? [y/n]:")
 					print("")
 					if(inp == 'n'):
@@ -318,6 +315,7 @@ class PoseDetector:
 						if(inp == 'y'):
 							failures = 0
 							input("Reposition camera and press Enter to continue.")
+							print("Taking samples...")
 							print("")
 						else:
 							print("Sorry, could not recognise answer. Trying one more sample...")
@@ -408,112 +406,6 @@ class PoseDetector:
 
 			file.write("\nEstimation errors:\n")
 
-			#if user asked for statistic values
-			if(self.makeStats):
-
-				meanErrorsArray = np.empty((0,6), dtype=float)
-				medianErrorsArray = np.empty((0,6), dtype=float)
-				stdErrorsArray = np.empty((0,6), dtype=float)
-				#for each pose
-				for i in range(nPoints):
-
-					#calculate mean and standard deviation
-					if(successPoses[i]):
-						#extract results of pose
-						results_i = rawResultsArray[i*self.maxSuccesses:(i+1)*self.maxSuccesses][:].astype(np.float)
-						#calculate mean and round to 3 decimals
-						meanResult_i = np.mean(results_i, axis=0)
-						for k in range(6):
-							meanResult_i[k] = round(meanResult_i[k], 3)
-						meanError = realCoordinatesMatrix[i] - meanResult_i
-						#add result to mean errors array
-						meanErrorsArray = np.vstack((meanErrorsArray, meanError))
-
-						#calculate median and round to 3 decimals
-						medianResult_i = np.median(results_i, axis=0)
-						for k in range(6):
-							medianResult_i[k] = round(medianResult_i[k], 3)
-						medianError = realCoordinatesMatrix[i] - medianResult_i
-						#add result to median errors array
-						medianErrorsArray = np.vstack((medianErrorsArray, medianError))
-						#extract absolute errors of raw results
-						errors_i_abs = np.absolute(rawErrorsArray[i*self.maxSuccesses:(i+1)*self.maxSuccesses][:].astype(np.float))
-						#calculate standard deviation of raw errors, round to 3 decimals
-						stdError = np.std(errors_i_abs, axis=0)
-						for k in range(6):
-							stdError[k] = round(stdError[k], 3)
-						#add result to std errors array
-						stdErrorsArray = np.vstack((stdErrorsArray, stdError))
-
-					else:
-						meanErrorsArray = np.vstack((meanErrorsArray, ['-','-','-','-','-','-']))
-						medianErrorsArray = np.vstack((medianErrorsArray, ['-','-','-','-','-','-']))
-						stdErrorsArray = np.vstack((stdErrorsArray, ['-','-','-','-','-','-']))
-
-				file.write("\nWith mean filter:\n")
-				for i in range(nPoints):
-
-					strPoint = []
-
-					if(successPoses[i]):
-						floatPoints = [float(point) for point in meanErrorsArray[i]]
-						print(floatPoints)
-						for k in range(len(floatPoints)):
-							floatPoints[k] = round(floatPoints[k], 3)
-						print(floatPoints)
-						strPoint = [str(point) for point in floatPoints]
-					else:
-						strPoint = [str(point) for point in meanErrorsArray[i]]
-
-					joinPoints = " ".join(strPoint)
-
-					file.write(str(i+1) + ": ")
-					file.writelines(joinPoints)
-					file.write("\n")
-
-				file.write("\nWith median filter:\n")
-
-				for i in range(nPoints):
-
-					strPoint = []
-
-					if(successPoses[i]):
-						floatPoints = [float(point) for point in medianErrorsArray[i]]
-						for k in range(len(floatPoints)):
-							floatPoints[k] = round(floatPoints[k], 3)
-						strPoint = [str(point) for point in floatPoints]
-					else:
-						strPoint = [str(point) for point in meanErrorsArray[i]]
-
-					joinPoints = " ".join(strPoint)
-
-					file.write(str(i+1) + ": ")
-					file.writelines(joinPoints)
-					file.write("\n")
-
-				file.write("\nStandard deviation in each pose:\n")
-
-				for i in range(nPoints):
-
-					strPoint = []
-
-					if(successPoses[i]):
-						floatPoints = [float(point) for point in stdErrorsArray[i]]
-						for k in range(len(floatPoints)):
-							floatPoints[k] = round(floatPoints[k], 3)
-						strPoint = [str(point) for point in floatPoints]
-					else:
-						strPoint = [str(point) for point in meanErrorsArray[i]]
-
-					joinPoints = " ".join(strPoint)
-
-					file.write(str(i+1) + ": ")
-					file.writelines(joinPoints)
-					file.write("\n")
-
-			#for i in range(self.maxSuccesses*nPoints):
-			#	for j in range(6):
-
 			rawResultsArray = np.around(rawResultsArray, 3)
 
 			file.write("\nRaw results:\n")
@@ -538,7 +430,7 @@ class PoseDetector:
 					file.writelines(joinPoints)
 					file.write("\n")
 
-			file.write("\nRaw results:\n")
+			file.write("\nRaw results, no index:\n")
 
 			for i in range(nPoints):
 				for j in range(self.maxSuccesses):
@@ -549,7 +441,7 @@ class PoseDetector:
 					file.writelines(joinPoints)
 					file.write("\n")
 
-			file.write("\nRaw errors:\n")
+			file.write("\nRaw errors, no index:\n")
 
 			for i in range(nPoints):
 				for j in range(self.maxSuccesses):
@@ -563,6 +455,16 @@ class PoseDetector:
 
 	    #save only raw outputs
 		else:
+			file.write("\nRaw results:\n")
+
+			for i in range(nPoints):
+				for j in range(self.maxSuccesses):
+					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
+
+			file.write("\nRaw errors:\n")
 			for i in range(nPoints):
 				for j in range(self.maxSuccesses):
 					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
@@ -631,8 +533,6 @@ ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 ap.add_argument("-r", "--RawOutputs", default=False, action='store_true',
 	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
 
-ap.add_argument("-st", "--MakeStats", default=False, action='store_true',
-	help="Snapshot mode adds median, mean and standard deviation to results (overriden by RawOutputs) (only applicable in snapshot mode)")
 
 args = vars(ap.parse_args())
 
@@ -643,7 +543,7 @@ pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = arg
 if(not args['Snapshot']):
 	pd.video()
 else:
-	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], makeStats=args['MakeStats'])
+	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'])
 	pd.snapshots()
 
 print("Closing software...")
