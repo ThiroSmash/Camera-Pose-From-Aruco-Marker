@@ -103,9 +103,13 @@ class PoseDetector:
 		if(inverseZMarker):
 			self.markerPoints[:,2] = -self.markerPoints[:,2]
 
-	def setSnapshotConfig(self, rawOutputs=False, maxSuccesses=10):
+	def setSnapshotConfig(self, rawOutputs = False, maxSuccesses = 10, maxFailures = 100, maxMarkersBypass = False):
 		self.rawOutputs = rawOutputs
 		self.maxSuccesses = maxSuccesses
+		self.maxFailures = maxFailures
+		self.maxMarkersBypass = maxMarkersBypass
+		self.realCoordinatesMatrix = np.loadtxt("camera_points.txt")
+		assert len(self.realCoordinatesMatrix[0]) == 6
 
 	def processFrame(self):
 		# grab the frame from the threaded video stream
@@ -259,11 +263,10 @@ class PoseDetector:
 
 
 	def snapshots(self):
-		realCoordinatesMatrix = np.loadtxt("camera_points.txt")
-		assert len(realCoordinatesMatrix[0]) == 6
+
 		rawErrorsArray = np.empty((0,6), dtype=float)
 		rawResultsArray = np.empty((0,6), dtype=float)
-		nPoints = len(realCoordinatesMatrix)
+		nPoints = len(self.realCoordinatesMatrix)
 		finalDetectedMarkers = []
 		successPoses = np.empty(nPoints, dtype=bool)
 		for i in range(nPoints):
@@ -271,12 +274,12 @@ class PoseDetector:
 			errors_i = []
 			print("")
 			print("Next pose:")
-			print("X: " + str(realCoordinatesMatrix[i][0]))
-			print("Y: " + str(realCoordinatesMatrix[i][1]))
-			print("Z: " + str(realCoordinatesMatrix[i][2]))
-			print("X-axis angle: " + str(realCoordinatesMatrix[i][3]))
-			print("Y-axis angle: " + str(realCoordinatesMatrix[i][4]))
-			print("Z-axis angle: " + str(realCoordinatesMatrix[i][5]))
+			print("X: " + str(self.realCoordinatesMatrix[i][0]))
+			print("Y: " + str(self.realCoordinatesMatrix[i][1]))
+			print("Z: " + str(self.realCoordinatesMatrix[i][2]))
+			print("X-axis angle: " + str(self.realCoordinatesMatrix[i][3]))
+			print("Y-axis angle: " + str(self.realCoordinatesMatrix[i][4]))
+			print("Z-axis angle: " + str(self.realCoordinatesMatrix[i][5]))
 			print("")
 			input("Position camera and press Enter to continue.")
 			print("Taking samples...")
@@ -284,61 +287,114 @@ class PoseDetector:
 			#take multiple shots of the point in question. if marker can't be detected, notify user
 			failures = 0
 			maxMarkers = 0
-			failed = False
-			while(successes < self.maxSuccesses):
-				success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, frame = self.processFrame()
-				if(success and len(detectedMarkers) >= maxMarkers):
-					maxMarkers = len(detectedMarkers)
-					failures = 0
-					calculatedCoordinates = world_coordinates + rotation_vector
-					successes += 1
-					error = realCoordinatesMatrix[i] - calculatedCoordinates
-					for k in range(6):
-						error[k] = round(error[k], 3)
-					rawResultsArray = np.vstack((rawResultsArray, calculatedCoordinates))
-					rawErrorsArray = np.vstack((rawErrorsArray, error))
-					#Check and store whether new markers have been detected
-					for id in detectedMarkers:
-						if id not in finalDetectedMarkers:
-							finalDetectedMarkers.append(id)
+			maxMarkersBypass = self.maxMarkersBypass
+			skipped = False
+			tempRawResults = np.empty((0,6), dtype=float)
+			tempRawErrors = np.empty((0,6), dtype=float)
 
+			while(successes < self.maxSuccesses and not skipped):
+				success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, frame = self.processFrame()
+				if(success):
+					#if a new, previously undetected marker appeared, discard previous samples and start over, unless bypass activated
+					if(len(detectedMarkers) > maxMarkers):
+						maxMarkers = len(detectedMarkers)
+						if(not maxMarkersBypass):
+							tempRawResults = np.empty((0,6), dtype=float)
+							tempErrorResults = np.empty((0,6), dtype=float)
+							successes = 0
+					#if bypass is activated, or it is not activated and all markers have been detected, store results
+					if(maxMarkersBypass or maxMarkers == len(detectedMarkers)):
+						failures = 0
+						calculatedCoordinates = world_coordinates + rotation_vector
+						successes += 1
+						errorArray = self.realCoordinatesMatrix[i] - calculatedCoordinates
+						for k in range(6):
+							errorArray[k] = round(errorArray[k], 3)
+						tempRawResults = np.vstack((tempRawResults, calculatedCoordinates))
+						tempRawErrors = np.vstack((tempRawErrors, errorArray))
+						#Check and store whether new markers have been detected
+						for id in detectedMarkers:
+							if id not in finalDetectedMarkers:
+								finalDetectedMarkers.append(id)
+
+						if(not maxMarkersBypass and successes == self.maxSuccesses):
+							print(str(maxMarkers) + " markers have been detected. Save results?[y/n]")
+							while(True):
+								inp = input("")
+								if(inp == 'n'):
+									print("Restarting pose configuration...")
+									tempRawResults = np.empty((0,6), dtype=float)
+									tempErrorResults = np.empty((0,6), dtype=float)
+									successes = 0
+									maxMarkers = 0
+									input("Reposition camera and press Enter to continue.")
+									print("Taking samples...")
+									print("")
+									break
+								else:
+									if(inp == 'y'):
+										print("Saving pose results...")
+										break
+					else:
+						failures = failures + 1
 				else:
 					failures = failures + 1
-				if(failures >= 500):
-					inp = input("Could not detect a marker from this pose. Would you like to try again? [y/n]:")
-					print("")
-					if(inp == 'n'):
-						print("Skipping current pose. Result will be filled with '-' for this pose.")
-						failed = True
-						break
+				if(failures >= self.maxFailures):
+					if(maxMarkers == 0):
+						print("Could not detect a marker from this pose. Would you like to try again? [y/n]:")
+						while(True):
+							inp = input("")
+							if(inp == 'n'):
+								print("Skipping current pose. Result will be filled with '-' for this pose.")
+								skipped = True
+								break
+							else:
+								if(inp == 'y'):
+									failures = 0
+									input("Reposition camera and press Enter to continue.")
+									print("Taking samples...")
+									print("")
+									break
 					else:
-						if(inp == 'y'):
-							failures = 0
-							input("Reposition camera and press Enter to continue.")
-							print("Taking samples...")
-							print("")
-						else:
-							print("Sorry, could not recognise answer. Trying one more sample...")
-							print("")
+						failures = 0
+						maxMarkers = 0
+						print("Some markers could not be detected with enough consistency. Would you like to bypass maximum marker requirement? [y/n]:")
+						while(True):
+							inp = input("")
+							if(inp == 'n'):
+								input("Reposition camera and press Enter to continue.")
+								print("Taking samples...")
+								print("")
+								break
+							else:
+								if(inp == 'y'):
+									maxMarkersBypass = True
+									print("Understood. Some samples likely won't detect the maximum amount of markers for this pose.")
+									print("")
+									break
 
 
-			if(not failed):
+
+			if(not skipped):
 				successPoses[i] = True
+				rawErrorsArray = np.vstack((rawErrorsArray, tempRawErrors))
+				rawResultsArray = np.vstack((rawResultsArray, tempRawResults))
 			else:
-				failedArray = ['-','-','-','-','-','-']
+				failedArray = [0,0,0,0,0,0]
 				successPoses[i] = False
 				for k in range(self.maxSuccesses):
 					rawErrorsArray = np.vstack((rawErrorsArray, failedArray))
 					rawResultsArray = np.vstack((rawResultsArray, failedArray))
+			print("Saved successfully.")
 
-		self.__printResults(rawResultsArray, rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers)
+		self.__printResults(rawResultsArray, rawErrorsArray, successPoses, finalDetectedMarkers)
 
 
 		#save results in txt
 
-	def __printResults(self, rawResultsArray, rawErrorsArray, realCoordinatesMatrix, nPoints, successPoses, finalDetectedMarkers):
+	def __printResults(self, rawResultsArray, rawErrorsArray, successPoses, finalDetectedMarkers):
 		file = open("results.txt", "a")
-
+		nPoints = len(self.realCoordinatesMatrix)
 		#save outputs with context and filters
 		if(not self.rawOutputs):
 
@@ -395,7 +451,7 @@ class PoseDetector:
 
 			file.write("\nPose definitions:\n")
 
-			posesList = realCoordinatesMatrix.tolist()
+			posesList = self.realCoordinatesMatrix.tolist()
 
 			for i in range(len(posesList)):
 				strPoint = [str(point) for point in posesList[i]]
@@ -411,46 +467,68 @@ class PoseDetector:
 			file.write("\nRaw results:\n")
 
 			for i in range(nPoints):
-				for j in range(self.maxSuccesses):
+				if(successPoses[i]):
+					for j in range(self.maxSuccesses):
 
-					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					file.write(str(i+1) + "." + str(j+1) + ": ")
-					file.writelines(joinPoints)
-					file.write("\n")
+						strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+						joinPoints = " ".join(strPoint)
+						file.write(str(i+1) + "." + str(j+1) + ": ")
+						file.writelines(joinPoints)
+						file.write("\n")
+				else:
+					for j in range(self.maxSuccesses):
+						file.write(str(i+1) + "." + str(j+1) + ": ")
+						file.writelines("- - - - - -")
+						file.write("\n")
+
 
 			file.write("\nRaw errors:\n")
 
 			for i in range(nPoints):
-				for j in range(self.maxSuccesses):
+				if(successPoses[i]):
+					for j in range(self.maxSuccesses):
+						strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+						joinPoints = " ".join(strPoint)
+						file.write(str(i+1) + "." + str(j+1) + ": ")
+						file.writelines(joinPoints)
+						file.write("\n")
+				else:
+					for j in range(self.maxSuccesses):
+						file.write(str(i+1) + "." + str(j+1) + ": ")
+						file.writelines("- - - - - -")
+						file.write("\n")
 
-					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					file.write(str(i+1) + "." + str(j+1) + ": ")
-					file.writelines(joinPoints)
-					file.write("\n")
+
+
 
 			file.write("\nRaw results, no index:\n")
 
 			for i in range(nPoints):
-				for j in range(self.maxSuccesses):
+				if(successPoses[i]):
+					for j in range(self.maxSuccesses):
+						strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+						joinPoints = " ".join(strPoint)
+						file.writelines(joinPoints)
+						file.write("\n")
+				else:
+					for j in range(self.maxSuccesses):
+						file.writelines("- - - - - -")
+						file.write("\n")
 
-					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					#file.write(str(i+1) + "." + str(j+1) + ": ")
-					file.writelines(joinPoints)
-					file.write("\n")
 
 			file.write("\nRaw errors, no index:\n")
 
 			for i in range(nPoints):
-				for j in range(self.maxSuccesses):
-
-					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					#file.write(str(i+1) + "." + str(j+1) + ": ")
-					file.writelines(joinPoints)
-					file.write("\n")
+				if(successPoses[i]):
+					for j in range(self.maxSuccesses):
+						strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+						joinPoints = " ".join(strPoint)
+						file.writelines(joinPoints)
+						file.write("\n")
+				else:
+					for j in range(self.maxSuccesses):
+						file.writelines("- - - - - -")
+						file.write("\n")
 
 
 	    #save only raw outputs
@@ -458,19 +536,29 @@ class PoseDetector:
 			file.write("\nRaw results:\n")
 
 			for i in range(nPoints):
-				for j in range(self.maxSuccesses):
-					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					file.writelines(joinPoints)
-					file.write("\n")
+				if(successPoses[i]):
+					for j in range(self.maxSuccesses):
+						strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+						joinPoints = " ".join(strPoint)
+						file.writelines(joinPoints)
+						file.write("\n")
+				else:
+					for j in range(self.maxSuccesses):
+						file.writelines("- - - - - -")
+						file.write("\n")
 
 			file.write("\nRaw errors:\n")
 			for i in range(nPoints):
-				for j in range(self.maxSuccesses):
-					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					file.writelines(joinPoints)
-					file.write("\n")
+				if(successPoses[i]):
+					for j in range(self.maxSuccesses):
+						strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+						joinPoints = " ".join(strPoint)
+						file.writelines(joinPoints)
+						file.write("\n")
+				else:
+					for j in range(self.maxSuccesses):
+						file.writelines("- - - - - -")
+						file.write("\n")
 
 		file.close()
 		print("")
@@ -493,9 +581,6 @@ class PoseDetector:
 ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--Port", type=int, default=0,
 	help="Camera port to use (for more info, run testports.py), port 0 by default")
-
-ap.add_argument("-x", "--MaxSuccesses", type=int, default=10,
-	help="Number of required successful frames for each shot in snapshot mode, 10 by default")
 
 ap.add_argument("-iX", "--InverseX", default=True, action='store_false',
 	help="Inverts X coordinate output. (Default: positive X-right, Y-up, Z-backwards)")
@@ -533,6 +618,14 @@ ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 ap.add_argument("-r", "--RawOutputs", default=False, action='store_true',
 	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
 
+ap.add_argument("-xs", "--MaxSuccesses", type=int, default=10,
+	help="Number of required successful frames for each shot in snapshot mode, 10 by default (only applicable in snapshot mode)")
+
+ap.add_argument("-xf", "--MaxFailures", type=int, default=100,
+	help="Number of required consecutive failed frames to trigger warning in shapshot mode, 100 by default (only applicable in snapshot mode)")
+
+ap.add_argument("-xmb", "--MaxMarkersBypass", default=False, action='store_true',
+	help="Snapshot mode won't require every sample from every pose to have the maximum amount of markers detected, false by default (only applicable in snapshot mode)")
 
 args = vars(ap.parse_args())
 
@@ -543,7 +636,7 @@ pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = arg
 if(not args['Snapshot']):
 	pd.video()
 else:
-	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'])
+	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], maxFailures = args['MaxFailures'], maxMarkersBypass=args['MaxMarkersBypass'])
 	pd.snapshots()
 
 print("Closing software...")
