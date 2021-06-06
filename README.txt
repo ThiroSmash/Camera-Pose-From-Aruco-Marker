@@ -41,6 +41,6 @@ The program has two different "modes": video mode and snapshot mode.
 In video mode it will simply calculate the camera pose and show the results in-real-time through video. This is the mode by default.
 
 In snapshot mode, the program will read the camera poses that the user has defined in "camera_points.txt". One by one, the program will ask the user to position the camera in one of the poses they defined in the file, and press Enter.
-Once Enter is pressed, the program will take a few image samples (ten by default, can be customised with --maxSuccesses or -x), calculate the mean position of the camera from all the samples, and then calculate the error relative to the pose defined by the user. Repeat until all poses have been iterated through.
-The error results will be printed into a file "results.txt", with all the information regarding defined camera poses, marker poses and the pose estimation errors.
-The purpose of snapshot mode is to easily and quickly produce dozens of pose estimation errors, for a better reflection of the program's precision.
+Once Enter is pressed, the program will take a few image samples (ten by default, can be customised with --maxSuccesses or -x), calculate the positions and store the results for later output. If --MakeStats option was selected, it will calculate a mean and a median value for each pose; otherwise only the raw results will be written.
+The results will be printed into a file "results.txt", with all the information regarding defined camera poses, marker poses and the pose estimations.
+The purpose of snapshot mode is to easily and quickly produce dozens of pose estimations, for a better reflection of the program's precision.
