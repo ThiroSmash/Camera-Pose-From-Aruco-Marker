@@ -17,8 +17,6 @@ X Y Z ID
 to represent one corner. The rows must be ordered representing the corners clock-wise, starting top-left (so top-left, top-right, botton-right, bottom-left). Also, the four corners of each marker must be consecutive (all corners of one marker, then all corners of another marker, then all corners of another marker, etc).
 	NOTE: OpenCV treats X's right, Y's down and Z's forward directions as positive when reading coordinates. However in this program by default, it is X-right, Y-up and Z-backwards in order to align with the default output coordinate system. Any and all systems can be customised through parameters, see --help for more info.
 
-	To-do: Python file to create markerPoints.txt from user inputs
-
 You must know which port your desired camera is using. For that, testports.py will show all the currently available and working ports.
 
 (OPTIONAL)
@@ -33,7 +31,7 @@ By default, this process will be repeated ten times. The amount of times can be 
 
 After all the samples have been collected, the program will show the distortion parameters as well as the camera matrix through the default output stream, as well as create txt files containing them locally.
 
-	MAIN PROGRAM
+	MAIN PROGRAM: POSEDETECTION.PY
 To start the program, run PoseDetection.py, once again indicating the port by --port. The camera calibration must have been done beforehand, otherwise the program won't find the required txt files with the camera's intrinsic parameters (default parameters option still to-do).
 
 The program has two different "modes": video mode and snapshot mode.
@@ -41,6 +39,8 @@ The program has two different "modes": video mode and snapshot mode.
 In video mode it will simply calculate the camera pose and show the results in-real-time through video. This is the mode by default.
 
 In snapshot mode, the program will read the camera poses that the user has defined in "camera_points.txt". One by one, the program will ask the user to position the camera in one of the poses they defined in the file, and press Enter.
-Once Enter is pressed, the program will take a few image samples (ten by default, can be customised with --maxSuccesses or -x), calculate the positions and store the results for later output. If --MakeStats option was selected, it will calculate a mean and a median value for each pose; otherwise only the raw results will be written.
-The results will be printed into a file "results.txt", with all the information regarding defined camera poses, marker poses and the pose estimations.
+Once Enter is pressed, the program will take a few image samples (ten by default, can be customised with --maxSuccesses or -x), calculate the positions and store the results for later output. 
+By default, the program will try to detect all of the markers within the angle of view for every single sample, and warn the user if it fails to do so in a certain amount of attempts. See the argument options with --help for more information.
+
+The results will be printed into a file "results.txt", with all the information regarding defined camera poses, marker poses and the pose estimations. If the --Raw option was selected, only the pose estimations and errors will be printed.
 The purpose of snapshot mode is to easily and quickly produce dozens of pose estimations, for a better reflection of the program's precision.
