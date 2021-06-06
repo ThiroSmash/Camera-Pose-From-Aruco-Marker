@@ -51,10 +51,6 @@ class WebcamVideoStream:
 		self.stopped = True
 
 
-
-
-
-
 class PoseDetector:
 
 	def __init__(self, port=0, showOriginals=False):
@@ -268,6 +264,7 @@ class PoseDetector:
 		rawResultsArray = np.empty((0,6), dtype=float)
 		nPoints = len(self.realCoordinatesMatrix)
 		finalDetectedMarkers = []
+		poseDetectedMarkersMatrix = []
 		successPoses = np.empty(nPoints, dtype=bool)
 		for i in range(nPoints):
 			successes = 0
@@ -291,19 +288,20 @@ class PoseDetector:
 			skipped = False
 			tempRawResults = np.empty((0,6), dtype=float)
 			tempRawErrors = np.empty((0,6), dtype=float)
-
+			poseDetectedMarkers = []
 			while(successes < self.maxSuccesses and not skipped):
 				success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, frame = self.processFrame()
 				if(success):
 					#if a new, previously undetected marker appeared, discard previous samples and start over, unless bypass activated
-					if(len(detectedMarkers) > maxMarkers):
-						maxMarkers = len(detectedMarkers)
+					newDetected, poseDetectedMarkers = self.__markersInArray(poseDetectedMarkers, detectedMarkers)
+					if(newDetected):
+						maxMarkers = len(poseDetectedMarkers)
 						if(not maxMarkersBypass):
 							tempRawResults = np.empty((0,6), dtype=float)
 							tempErrorResults = np.empty((0,6), dtype=float)
 							successes = 0
 					#if bypass is activated, or it is not activated and all markers have been detected, store results
-					if(maxMarkersBypass or maxMarkers == len(detectedMarkers)):
+					if(maxMarkersBypass or len(detectedMarkers) == maxMarkers):
 						failures = 0
 						calculatedCoordinates = world_coordinates + rotation_vector
 						successes += 1
@@ -312,10 +310,6 @@ class PoseDetector:
 							errorArray[k] = round(errorArray[k], 3)
 						tempRawResults = np.vstack((tempRawResults, calculatedCoordinates))
 						tempRawErrors = np.vstack((tempRawErrors, errorArray))
-						#Check and store whether new markers have been detected
-						for id in detectedMarkers:
-							if id not in finalDetectedMarkers:
-								finalDetectedMarkers.append(id)
 
 						if(not maxMarkersBypass and successes == self.maxSuccesses):
 							print(str(maxMarkers) + " markers have been detected. Save results?[y/n]")
@@ -327,6 +321,7 @@ class PoseDetector:
 									tempErrorResults = np.empty((0,6), dtype=float)
 									successes = 0
 									maxMarkers = 0
+									poseDetectedMarkers = []
 									input("Reposition camera and press Enter to continue.")
 									print("Taking samples...")
 									print("")
@@ -358,6 +353,7 @@ class PoseDetector:
 					else:
 						failures = 0
 						maxMarkers = 0
+						poseDetectedMarkers = []
 						print("Some markers could not be detected with enough consistency. Would you like to bypass maximum marker requirement? [y/n]:")
 						while(True):
 							inp = input("")
@@ -374,191 +370,202 @@ class PoseDetector:
 									break
 
 
-
 			if(not skipped):
+				#Notify that pose was successfully calculated
 				successPoses[i] = True
+				#Store results and errors of calculation
 				rawErrorsArray = np.vstack((rawErrorsArray, tempRawErrors))
 				rawResultsArray = np.vstack((rawResultsArray, tempRawResults))
+				#Update list of detected markers, for all poses individually and collectively
+				poseDetectedMarkers.sort()
+				trash, finalDetectedMarkers = self.__markersInArray(finalDetectedMarkers, poseDetectedMarkers)
+				poseDetectedMarkersMatrix.append(poseDetectedMarkers)
 			else:
 				failedArray = [0,0,0,0,0,0]
 				successPoses[i] = False
 				for k in range(self.maxSuccesses):
 					rawErrorsArray = np.vstack((rawErrorsArray, failedArray))
 					rawResultsArray = np.vstack((rawResultsArray, failedArray))
+				poseDetectedMarkersMatrix.append([-1])
 			print("Saved successfully.")
 
-		self.__printResults(rawResultsArray, rawErrorsArray, successPoses, finalDetectedMarkers)
+		if(not self.rawOutputs):
+			self.__printResults(rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers)
+		else:
+			self.__printResultsRaw(rawResultsArray, rawErrorsArray, successPoses)
 
-
-		#save results in txt
-
-	def __printResults(self, rawResultsArray, rawErrorsArray, successPoses, finalDetectedMarkers):
+	def __printResults(self, rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers):
 		file = open("results.txt", "a")
 		nPoints = len(self.realCoordinatesMatrix)
 		#save outputs with context and filters
-		if(not self.rawOutputs):
 
-			file.write("\nCoordinate systems:\n")
-			file.write("Markers: ")
-			if(self.inverseXMarker):
-				file.write("X-left, ")
-			else: file.write("X-right, ")
-			if(self.inverseYMarker):
-				file.write("Y-up, ")
-			else: file.write("Y-down, ")
-			if(self.inverseZMarker):
-				file.write("Z-backward")
-			else: file.write("Z-forward")
-			file.write("\nCamera coordinates: ")
-			if(self.inverseX):
-				file.write("X-right, ")
-			else: file.write("X-left, ")
-			if(self.inverseY):
-				file.write("Y-down, ")
-			else: file.write("Y-up, ")
-			if(self.inverseZ):
-				file.write("Z-forward")
-			else: file.write("Z-backward")
-			file.write("\nCamera angles: ")
-			if(self.inverseXAngle):
-				file.write("X-down, ")
-			else: file.write("X-up, ")
-			if(self.inverseYAngle):
-				file.write("Y-right, ")
-			else: file.write("Y-left, ")
-			if(self.inverseZAngle):
-				file.write("Z-clockwise\n")
-			else: file.write("Z-counterclockwise\n")
+		file.write("\nCoordinate systems:\n")
+		file.write("Markers: ")
+		if(self.inverseXMarker):
+			file.write("X-left, ")
+		else: file.write("X-right, ")
+		if(self.inverseYMarker):
+			file.write("Y-up, ")
+		else: file.write("Y-down, ")
+		if(self.inverseZMarker):
+			file.write("Z-backward")
+		else: file.write("Z-forward")
+		file.write("\nCamera coordinates: ")
+		if(self.inverseX):
+			file.write("X-right, ")
+		else: file.write("X-left, ")
+		if(self.inverseY):
+			file.write("Y-down, ")
+		else: file.write("Y-up, ")
+		if(self.inverseZ):
+			file.write("Z-forward")
+		else: file.write("Z-backward")
+		file.write("\nCamera angles: ")
+		if(self.inverseXAngle):
+			file.write("X-down, ")
+		else: file.write("X-up, ")
+		if(self.inverseYAngle):
+			file.write("Y-right, ")
+		else: file.write("Y-left, ")
+		if(self.inverseZAngle):
+			file.write("Z-clockwise\n")
+		else: file.write("Z-counterclockwise\n")
 
-			file.write("\nMarker definitions:\n")
+		file.write("\nMarker definitions:\n")
 
-			mtx = np.loadtxt("marker_points.txt")
-			markersList = np.array(mtx[:,0:3]).tolist()
+		mtx = np.loadtxt("marker_points.txt")
+		markersList = np.array(mtx[:,0:3]).tolist()
 
-			for i in range(len(markersList)):
-				strPoint = [str(point) for point in markersList[i]]
-				joinPoints = " ".join(strPoint)
-				file.write(str(int(self.markerIds[math.trunc(i/4)])) + ": ")
-				file.writelines(joinPoints)
-				file.write("\n")
-
-			file.write("\nFinal detected markers:\n")
-
-			strId = [str(int(id)) for id in finalDetectedMarkers]
-			joinId = " ".join(strId)
-			file.writelines(joinId)
+		for i in range(len(markersList)):
+			strPoint = [str(point) for point in markersList[i]]
+			joinPoints = " ".join(strPoint)
+			file.write(str(int(self.markerIds[math.trunc(i/4)])) + ": ")
+			file.writelines(joinPoints)
 			file.write("\n")
 
-			file.write("\nPose definitions:\n")
+		file.write("\nFinal detected markers:\n")
 
-			posesList = self.realCoordinatesMatrix.tolist()
+		strId = [str(int(id)) for id in finalDetectedMarkers]
+		joinId = " ".join(strId)
+		file.writelines(joinId)
+		file.write("\n")
 
-			for i in range(len(posesList)):
-				strPoint = [str(point) for point in posesList[i]]
-				joinPoints = " ".join(strPoint)
-				file.write(str(i+1) + ": ")
+		file.write("\nPose definitions:\n")
+
+		posesList = self.realCoordinatesMatrix.tolist()
+
+		for i in range(len(posesList)):
+			strPoint = [str(point) for point in posesList[i]]
+			joinPoints = " ".join(strPoint)
+			file.write(str(i+1) + ": ")
+			file.writelines(joinPoints)
+			file.write("\n")
+
+		file.write("\nDetected markers in each pose:\n")
+
+		for i in range(len(posesList)):
+			file.write(str(int(self.markerIds[math.trunc(i/4)])) + ": ")
+			if successPoses[i]:
+				strPoint = [str(int(point)) for point in poseDetectedMarkersMatrix[i]]
+				joinPoints = ", ".join(strPoint)
 				file.writelines(joinPoints)
 				file.write("\n")
+			else:
+				file.write("-\n")
 
-			file.write("\nEstimation errors:\n")
+		file.write("\nEstimation errors:\n")
 
-			rawResultsArray = np.around(rawResultsArray, 3)
+		rawResultsArray = np.around(rawResultsArray, 3)
 
-			file.write("\nRaw results:\n")
+		file.write("\nRaw results:\n")
 
-			for i in range(nPoints):
-				if(successPoses[i]):
-					for j in range(self.maxSuccesses):
+		for i in range(nPoints):
+			if(successPoses[i]):
+				for j in range(self.maxSuccesses):
+					file.write(str(i+1) + "." + str(j+1) + ": ")
+					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
+			else:
+				for j in range(self.maxSuccesses):
+					file.write(str(i+1) + "." + str(j+1) + ": ")
+					file.write("- - - - - -\n")
 
-						strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
-						joinPoints = " ".join(strPoint)
-						file.write(str(i+1) + "." + str(j+1) + ": ")
-						file.writelines(joinPoints)
-						file.write("\n")
-				else:
-					for j in range(self.maxSuccesses):
-						file.write(str(i+1) + "." + str(j+1) + ": ")
-						file.writelines("- - - - - -")
-						file.write("\n")
+		file.write("\nRaw errors:\n")
 
+		for i in range(nPoints):
+			if(successPoses[i]):
+				for j in range(self.maxSuccesses):
+					file.write(str(i+1) + "." + str(j+1) + ": ")
+					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
+			else:
+				for j in range(self.maxSuccesses):
+					file.write(str(i+1) + "." + str(j+1) + ": ")
+					file.writelines("- - - - - -\n")
 
-			file.write("\nRaw errors:\n")
+		file.write("\nRaw results, no index:\n")
 
-			for i in range(nPoints):
-				if(successPoses[i]):
-					for j in range(self.maxSuccesses):
-						strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
-						joinPoints = " ".join(strPoint)
-						file.write(str(i+1) + "." + str(j+1) + ": ")
-						file.writelines(joinPoints)
-						file.write("\n")
-				else:
-					for j in range(self.maxSuccesses):
-						file.write(str(i+1) + "." + str(j+1) + ": ")
-						file.writelines("- - - - - -")
-						file.write("\n")
-
-
-
-
-			file.write("\nRaw results, no index:\n")
-
-			for i in range(nPoints):
-				if(successPoses[i]):
-					for j in range(self.maxSuccesses):
-						strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
-						joinPoints = " ".join(strPoint)
-						file.writelines(joinPoints)
-						file.write("\n")
-				else:
-					for j in range(self.maxSuccesses):
-						file.writelines("- - - - - -")
-						file.write("\n")
+		for i in range(nPoints):
+			if(successPoses[i]):
+				for j in range(self.maxSuccesses):
+					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
+			else:
+				for j in range(self.maxSuccesses):
+					file.write("- - - - - -\n")
 
 
-			file.write("\nRaw errors, no index:\n")
+		file.write("\nRaw errors, no index:\n")
 
-			for i in range(nPoints):
-				if(successPoses[i]):
-					for j in range(self.maxSuccesses):
-						strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
-						joinPoints = " ".join(strPoint)
-						file.writelines(joinPoints)
-						file.write("\n")
-				else:
-					for j in range(self.maxSuccesses):
-						file.writelines("- - - - - -")
-						file.write("\n")
+		for i in range(nPoints):
+			if(successPoses[i]):
+				for j in range(self.maxSuccesses):
+					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
+			else:
+				for j in range(self.maxSuccesses):
+					file.write("- - - - - -\n")
 
+		file.close()
+		print("")
+		print("Estimation errors successfully saved in results.txt")
 
-	    #save only raw outputs
-		else:
-			file.write("\nRaw results:\n")
+	def __printResultsRaw(self, rawResultsArray, rawErrorsArray, successPoses):
+		file = open("results.txt", "a")
+		nPoints = len(self.realCoordinatesMatrix)
 
-			for i in range(nPoints):
-				if(successPoses[i]):
-					for j in range(self.maxSuccesses):
-						strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
-						joinPoints = " ".join(strPoint)
-						file.writelines(joinPoints)
-						file.write("\n")
-				else:
-					for j in range(self.maxSuccesses):
-						file.writelines("- - - - - -")
-						file.write("\n")
+		file.write("\nRaw results:\n")
 
-			file.write("\nRaw errors:\n")
-			for i in range(nPoints):
-				if(successPoses[i]):
-					for j in range(self.maxSuccesses):
-						strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
-						joinPoints = " ".join(strPoint)
-						file.writelines(joinPoints)
-						file.write("\n")
-				else:
-					for j in range(self.maxSuccesses):
-						file.writelines("- - - - - -")
-						file.write("\n")
+		for i in range(nPoints):
+			if(successPoses[i]):
+				for j in range(self.maxSuccesses):
+					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
+			else:
+				for j in range(self.maxSuccesses):
+					file.write("- - - - - -\n")
+
+		file.write("\nRaw errors:\n")
+		for i in range(nPoints):
+			if(successPoses[i]):
+				for j in range(self.maxSuccesses):
+					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
+					joinPoints = " ".join(strPoint)
+					file.writelines(joinPoints)
+					file.write("\n")
+			else:
+				for j in range(self.maxSuccesses):
+					file.write("- - - - - -\n")
 
 		file.close()
 		print("")
@@ -566,6 +573,14 @@ class PoseDetector:
 
 	def stop(self):
 		self.vs.stop()
+
+	def __markersInArray(self, markersArray, newMarkers):
+		newOnes = False
+		for marker in newMarkers:
+			if marker not in markersArray:
+				markersArray.append(marker)
+				newOnes = True
+		return newOnes, markersArray
 
 	def __camera_to_world_coords(self, rotation_vector, translation_vector):
 		world_coordinates = [0,0,0]
