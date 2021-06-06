@@ -57,7 +57,7 @@ class PoseDetector:
 	WEIGHTED_MOVING_AVERAGE = 2
 	EXPONENTIAL_MOVING_AVERAGE = 3
 
-	def __init__(self, port=0, showOriginals=False):
+	def __init__(self, port=0, showOriginals=False, defaultCalibration=False):
 
 		#create a threaded video stream
 		self.vs = WebcamVideoStream(src=port).start()
@@ -68,14 +68,23 @@ class PoseDetector:
 		self.parameters.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
 
 		#read intrinsic camera parameters
-		self.matrix = np.loadtxt("camera_matrix.txt", float)
-		self.refinedMatrix = np.loadtxt("refined_camera_matrix.txt", float)
-		self.focalLengthX = self.matrix[0][0]
-		self.dist_coeffs = np.loadtxt("distortion_coefficients.txt",float)
+		if(defaultCalibration):
+			self.matrix = np.ones((3,3), dtype=float)
+			self.matrix[0,1] = 0
+			self.matrix[1,0] = 0
+			self.matrix[2,0:2] = 0
+			self.refinedMatrix = self.matrix
+			self.focalLengthX = self.matrix[0][0]
+			self.distCoeffs = np.zeros((5), dtype=float)
+		else:
+			self.matrix = np.loadtxt("camera_matrix.txt", float)
+			self.refinedMatrix = np.loadtxt("refined_camera_matrix.txt", float)
+			self.focalLengthX = self.matrix[0][0]
+			self.distCoeffs = np.loadtxt("distortion_coefficients.txt",float)
+
 		#Marker corners coordinates
 		mtx = np.loadtxt("marker_points.txt")
 		self.markerPoints = np.array(mtx[:,0:3])
-
 		self.markerIds = mtx[::4,3]
 
 		self.showOriginals = showOriginals
@@ -121,7 +130,7 @@ class PoseDetector:
 
 		# detect aruco markers in the frame
 		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-		corners, idsM, rejectedImgPoints = aruco.detectMarkers(gray, self.aruco_dict, parameters=self.parameters, cameraMatrix=self.refinedMatrix, distCoeff=self.dist_coeffs)
+		corners, idsM, rejectedImgPoints = aruco.detectMarkers(gray, self.aruco_dict, parameters=self.parameters, cameraMatrix=self.refinedMatrix, distCoeff=self.distCoeffs)
 
 		#remove detected markers that aren't defined in marker_points.txt, and change format to array from matrix
 		ids = []
@@ -163,7 +172,7 @@ class PoseDetector:
 			#show the frame, with detected markers
 			gray = aruco.drawDetectedMarkers(gray, corners)
 
-			success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, self.refinedMatrix, self.dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE)
+			success, rotation_vector, translation_vector = cv2.solvePnP(objPoints, imgPoints, self.refinedMatrix, self.distCoeffs, flags=cv2.SOLVEPNP_ITERATIVE)
 			translation_vector.mean()
 			if(success):
 				#solvePnP's x-axis rotation angle is of opposite sign relative to the Y coordinate
@@ -624,6 +633,9 @@ ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--Port", type=int, default=0,
 	help="Camera port to use (for more info, run testports.py), port 0 by default")
 
+ap.add_argument("-dc", "--DefaultCalibration", default=False, action='store_true',
+	help="Sets the camera's intrinsic parameters to defaults, skipping calibration. False by default.")
+
 ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
 	help="Shows coordinates directly calculated by OpenCV, relative to camera's orientation (only applicable in video mode)")
 
@@ -677,7 +689,7 @@ ap.add_argument("-iZM", "--InverseZMarker", default=True, action='store_false',
 
 args = vars(ap.parse_args())
 
-pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'])
+pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'], defaultCalibration = args['DefaultCalibration'])
 pd.setCoordinatesOutput(inverseX = args['InverseX'], inverseY = args['InverseY'], inverseZ = args['InverseZ'])
 pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZAngle = args['InverseZAngle'])
 pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = args['InverseYMarker'], inverseZMarker = args['InverseZMarker'])
