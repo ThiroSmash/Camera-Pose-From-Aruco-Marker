@@ -53,6 +53,10 @@ class WebcamVideoStream:
 
 class PoseDetector:
 
+	SIMPLE_MOVING_AVERAGE = 1
+	WEIGHTED_MOVING_AVERAGE = 2
+	EXPONENTIAL_MOVING_AVERAGE = 3
+
 	def __init__(self, port=0, showOriginals=False):
 
 		#create a threaded video stream
@@ -75,6 +79,7 @@ class PoseDetector:
 		self.markerIds = mtx[::4,3]
 
 		self.showOriginals = showOriginals
+
 
 	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
 			self.inverseX = inverseX
@@ -193,11 +198,33 @@ class PoseDetector:
 
 		return success, world_coordinates, rot_vector, trans_vector, retIds, gray
 
-	def video(self):
+	def video(self, movingAverageFlag = False, movingAverageWindow = 20):
+
+		if(movingAverageFlag):
+			#initialize storage with zeros
+			lastFramesArray = [[0 for x in range(6)] for y in range(movingAverageWindow)]
+			#set weights depending on type
+			if(movingAverageFlag == PoseDetector.SIMPLE_MOVING_AVERAGE):
+				movingAverageWeights = [1 for x in range(movingAverageWindow)]
+			if(movingAverageFlag == PoseDetector.WEIGHTED_MOVING_AVERAGE):
+				movingAverageWeights = [(movingAverageWindow - x) for x in range(movingAverageWindow)]
+			if(movingAverageFlag == PoseDetector.EXPONENTIAL_MOVING_AVERAGE):
+				alpha = 2/(movingAverageWindow + 1)
+				movingAverageWeights = [(1 - alpha)**x for x in range(movingAverageWindow)]
+
+		#loop over captured frames until user interruption
 		while (True):
 			success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, gray = self.processFrame()
 			#show data in output image
 			if(success):
+
+				if(movingAverageFlag):
+					lastFramesArray.insert(0, world_coordinates + rotation_vector)
+					lastFramesArray.pop()
+					movingAverageResult = np.ma.average(lastFramesArray, axis=0, weights=movingAverageWeights)
+					world_coordinates = movingAverageResult[0:3]
+					rotation_vector = movingAverageResult[3:6]
+
 
 				#Round outputs to 3 decimals
 				for i in range(3):
@@ -597,6 +624,30 @@ ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--Port", type=int, default=0,
 	help="Camera port to use (for more info, run testports.py), port 0 by default")
 
+ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
+	help="Shows coordinates directly calculated by OpenCV, relative to camera's orientation (only applicable in video mode)")
+
+ap.add_argument("-ma", "--MovingAverage", choices=['None', 'Simple', 'Weighted', 'Exponential'], default='None',
+	help="Apply a moving average to smooth results (only applicable in video mode)")
+
+ap.add_argument("-maw", "--MovingAverageWindow", default=20,
+	help="Window size of moving average if any selected, 20 by default (only applicable in video mode)")
+
+ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
+	help="Turns on snapshot mode (requires camera_points.txt, outputs results and errors in results.txt)")
+
+ap.add_argument("-r", "--RawOutputs", default=False, action='store_true',
+	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
+
+ap.add_argument("-xs", "--MaxSuccesses", type=int, default=10,
+	help="Number of required successful frames for each shot in snapshot mode, 10 by default (only applicable in snapshot mode)")
+
+ap.add_argument("-xf", "--MaxFailures", type=int, default=100,
+	help="Number of required consecutive failed frames to trigger warning in shapshot mode, 100 by default (only applicable in snapshot mode)")
+
+ap.add_argument("-xmb", "--MaxMarkersBypass", default=False, action='store_true',
+	help="Snapshot mode won't require every sample from every pose to have the maximum amount of markers detected, false by default (only applicable in snapshot mode)")
+
 ap.add_argument("-iX", "--InverseX", default=True, action='store_false',
 	help="Inverts X coordinate output. (Default: positive X-right, Y-up, Z-backwards)")
 
@@ -616,31 +667,13 @@ ap.add_argument("-iZA", "--InverseZAngle", default=True, action='store_false',
 	help="Inverts Z-axis angle output. (Default: positive X-up, Y-right, Z-clockwise)")
 
 ap.add_argument("-iXM", "--InverseXMarker", default=False, action='store_true',
-	help="Inverts X coordinate of marker inputs. (Default same coordinate system as default output)")
+	help="Inverts X coordinate of marker inputs. (Default: positive X-right, Y-up, Z-backwards)")
 
 ap.add_argument("-iYM", "--InverseYMarker", default=True, action='store_false',
-	help="Inverts X coordinate of marker inputs. (Default same coordinate system as default output)")
+	help="Inverts X coordinate of marker inputs. (Default: positive X-right, Y-up, Z-backwards)")
 
 ap.add_argument("-iZM", "--InverseZMarker", default=True, action='store_false',
-	help="Inverts X coordinate of marker inputs. (Default same coordinate system as default output)")
-
-ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
-		help="Shows coordinates directly calculated by OpenCV (relative to camera's orientation) (only applicable in video mode)")
-
-ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
-	help="Turns on snapshot mode (requires camera_points.txt, outputs estimation errors in results.txt)")
-
-ap.add_argument("-r", "--RawOutputs", default=False, action='store_true',
-	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
-
-ap.add_argument("-xs", "--MaxSuccesses", type=int, default=10,
-	help="Number of required successful frames for each shot in snapshot mode, 10 by default (only applicable in snapshot mode)")
-
-ap.add_argument("-xf", "--MaxFailures", type=int, default=100,
-	help="Number of required consecutive failed frames to trigger warning in shapshot mode, 100 by default (only applicable in snapshot mode)")
-
-ap.add_argument("-xmb", "--MaxMarkersBypass", default=False, action='store_true',
-	help="Snapshot mode won't require every sample from every pose to have the maximum amount of markers detected, false by default (only applicable in snapshot mode)")
+	help="Inverts X coordinate of marker inputs. (Default: positive X-right, Y-up, Z-backwards)")
 
 args = vars(ap.parse_args())
 
@@ -649,7 +682,14 @@ pd.setCoordinatesOutput(inverseX = args['InverseX'], inverseY = args['InverseY']
 pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZAngle = args['InverseZAngle'])
 pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = args['InverseYMarker'], inverseZMarker = args['InverseZMarker'])
 if(not args['Snapshot']):
-	pd.video()
+	flag = False
+	if(args['MovingAverage'] == 'Simple'):
+		flag = PoseDetector.SIMPLE_MOVING_AVERAGE
+	if(args['MovingAverage'] == 'Weighted'):
+		flag = PoseDetector.WEIGHTED_MOVING_AVERAGE
+	if(args['MovingAverage'] == 'Exponential'):
+		flag = PoseDetector.EXPONENTIAL_MOVING_AVERAGE
+	pd.video(movingAverageFlag = flag, movingAverageWindow = args['MovingAverageWindow'])
 else:
 	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], maxFailures = args['MaxFailures'], maxMarkersBypass=args['MaxMarkersBypass'])
 	pd.snapshots()
