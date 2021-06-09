@@ -642,7 +642,7 @@ ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
 ap.add_argument("-ma", "--MovingAverage", choices=['None', 'Simple', 'Weighted', 'Exponential'], default='None',
 	help="Apply a moving average to smooth results (only applicable in video mode)")
 
-ap.add_argument("-maw", "--MovingAverageWindow", default=20,
+ap.add_argument("-maw", "--MovingAverageWindow", type=int, default=20,
 	help="Window size of moving average if any selected, 20 by default (only applicable in video mode)")
 
 ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
