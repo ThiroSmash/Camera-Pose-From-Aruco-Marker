@@ -621,8 +621,8 @@ class PoseDetector:
 	def __camera_to_world_coords(self, rotation_vector, translation_vector):
 		world_coordinates = [0,0,0]
 
-		world_coordinates[0] = ( translation_vector[0]*math.cos(rotation_vector[1]) - translation_vector[2]*math.sin(rotation_vector[1]) ).item()
-		world_coordinates[1] = ( translation_vector[1]*math.cos(rotation_vector[0]) - translation_vector[2]*math.sin(rotation_vector[0]) ).item()
+		world_coordinates[0] = ( translation_vector[0]*math.cos(rotation_vector[1])*math.cos(rotation_vector[2]) + translation_vector[1]*math.sin(rotation_vector[2]) - translation_vector[2]*math.sin(rotation_vector[1]) ).item()
+		world_coordinates[1] = ( translation_vector[1]*math.cos(rotation_vector[0])*math.cos(rotation_vector[2]) - translation_vector[0]*math.sin(rotation_vector[2]) - translation_vector[2]*math.sin(rotation_vector[0]) ).item()
 		world_coordinates[2] = ( translation_vector[2]*math.cos(rotation_vector[1])*math.cos(rotation_vector[0]) + translation_vector[0]*math.sin(rotation_vector[1]) + translation_vector[1]*math.sin(rotation_vector[0]) ).item()
 
 		return world_coordinates
