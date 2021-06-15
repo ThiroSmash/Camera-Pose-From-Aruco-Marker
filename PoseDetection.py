@@ -57,7 +57,7 @@ class PoseDetector:
 	WEIGHTED_MOVING_AVERAGE = 2
 	EXPONENTIAL_MOVING_AVERAGE = 3
 
-	def __init__(self, port=0, showOriginals=False, defaultCalibration=False):
+	def __init__(self, port=0, showOriginals=False, defaultCalibration=False, applyDisplacement=False):
 
 		#create a threaded video stream
 		self.vs = WebcamVideoStream(src=port).start()
@@ -88,12 +88,25 @@ class PoseDetector:
 		self.markerIds = mtx[::4,3]
 
 		self.showOriginals = showOriginals
+		self.applyDisplacement = applyDisplacement
+
+		if(applyDisplacement):
+			self.displacementArray = np.loadtxt("displacement.txt", float)
 
 
 	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
 			self.inverseX = inverseX
 			self.inverseY = inverseY
 			self.inverseZ = inverseZ
+
+			if(self.applyDisplacement):
+				if(inverseX):
+					self.displacementArray[0] = -self.displacementArray[0]
+				if(inverseY):
+					self.displacementArray[1] = -self.displacementArray[1]
+				if(inverseZ):
+					self.displacementArray[2] = -self.displacementArray[2]
+
 
 	def setAnglesOutput(self, inverseXAngle = False, inverseYAngle = True, inverseZAngle = True):
 			self.inverseXAngle = inverseXAngle
@@ -177,6 +190,11 @@ class PoseDetector:
 			if(success):
 				#solvePnP's x-axis rotation angle is of opposite sign relative to the Y coordinate
 				rotation_vector[0] = -rotation_vector[0]
+
+				if(self.applyDisplacement):
+					for i in range(3):
+						translation_vector[i] = translation_vector[i] + self.displacementArray[i]
+
 				world_coordinates = self.__camera_to_world_coords(rotation_vector, translation_vector)
 
 				if(self.inverseX):
@@ -204,6 +222,7 @@ class PoseDetector:
 				for i in range(3):
 					rot_vector.append((rotation_vector[i]).item())
 					trans_vector.append((translation_vector[i]).item())
+
 
 		return success, world_coordinates, rot_vector, trans_vector, retIds, gray
 
@@ -636,6 +655,9 @@ ap.add_argument("-p", "--Port", type=int, default=0,
 ap.add_argument("-dc", "--DefaultCalibration", default=False, action='store_true',
 	help="Sets the camera's intrinsic parameters to defaults, skipping calibration. False by default.")
 
+ap.add_argument("-ad", "--ApplyDisplacement", default=False, action='store_true',
+	help="Applies displacement indicated by displacement.txt to results.")
+
 ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
 	help="Shows coordinates directly calculated by OpenCV, relative to camera's orientation (only applicable in video mode)")
 
@@ -689,7 +711,7 @@ ap.add_argument("-iZM", "--InverseZMarker", default=True, action='store_false',
 
 args = vars(ap.parse_args())
 
-pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'], defaultCalibration = args['DefaultCalibration'])
+pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'], defaultCalibration = args['DefaultCalibration'], applyDisplacement = args['ApplyDisplacement'])
 pd.setCoordinatesOutput(inverseX = args['InverseX'], inverseY = args['InverseY'], inverseZ = args['InverseZ'])
 pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZAngle = args['InverseZAngle'])
 pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = args['InverseYMarker'], inverseZMarker = args['InverseZMarker'])

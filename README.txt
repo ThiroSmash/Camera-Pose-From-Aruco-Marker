@@ -22,6 +22,11 @@ You must know which port your desired camera is using. For that, testports.py wi
 (OPTIONAL)
 In order to use the snapshot mode (more info below), you must create a txt file called "camera_points.txt". Each row of this file represents a camera pose and must contain a translation vector followed by a rotation vector (X coord, Y coord, Z coord, X-axis angle, Y-axis angle, Z-axis angle). More information in 'Main Program' section.
 
+(OPTIONAL)
+If the point you wish to estimate is a fixed distance away from the camera, but it rotates along with said camera, you may use --ApplyDisplacement option along with a "displacement.txt" file. Said file must contain a single row:
+X Y Z
+to indicate the displacement in each of the coordinates. When the rotation of the camera is different than zero angles, this displacement is recalculated accordingly, treating the camera and the destiny point as a single body.
+
 	CAMERA CALIBRATION
 Plug into your device the camera that you wish to use. Then, run CameraCalibration.py, indicating the port of the camera with the --port argument.
 
