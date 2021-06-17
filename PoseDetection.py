@@ -94,24 +94,31 @@ class PoseDetector:
 			self.displacementArray = np.loadtxt("displacement.txt", float)
 
 
-	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
-			self.inverseX = inverseX
-			self.inverseY = inverseY
-			self.inverseZ = inverseZ
 
-			if(self.applyDisplacement):
-				if(inverseX):
-					self.displacementArray[0] = -self.displacementArray[0]
-				if(inverseY):
-					self.displacementArray[1] = -self.displacementArray[1]
-				if(inverseZ):
-					self.displacementArray[2] = -self.displacementArray[2]
+	def setImageCropping(self, cropLeft = 0, cropRight = 0, cropTop = 0, cropBottom = 0):
+		self.cropLeft = cropLeft
+		self.cropRight = cropRight
+		self.cropTop = cropTop
+		self.cropBottom = cropBottom
+
+	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
+		self.inverseX = inverseX
+		self.inverseY = inverseY
+		self.inverseZ = inverseZ
+
+		if(self.applyDisplacement):
+			if(inverseX):
+				self.displacementArray[0] = -self.displacementArray[0]
+			if(inverseY):
+				self.displacementArray[1] = -self.displacementArray[1]
+			if(inverseZ):
+				self.displacementArray[2] = -self.displacementArray[2]
 
 
 	def setAnglesOutput(self, inverseXAngle = False, inverseYAngle = True, inverseZAngle = True):
-			self.inverseXAngle = inverseXAngle
-			self.inverseYAngle = inverseYAngle
-			self.inverseZAngle = inverseZAngle
+		self.inverseXAngle = inverseXAngle
+		self.inverseYAngle = inverseYAngle
+		self.inverseZAngle = inverseZAngle
 
 	def setMarkersInput(self, inverseXMarker = False, inverseYMarker = True, inverseZMarker = True):
 		self.inverseXMarker = inverseXMarker
@@ -141,8 +148,13 @@ class PoseDetector:
 			if(not repeated):
 				break
 
+		#crop the frame, if the user asked to
+		height, width, trash = frame.shape
+		croppedFrame = frame[self.cropTop:(height-self.cropBottom), self.cropLeft:(width-self.cropRight)]
+
+
 		# detect aruco markers in the frame
-		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+		gray = cv2.cvtColor(croppedFrame, cv2.COLOR_BGR2GRAY)
 		corners, idsM, rejectedImgPoints = aruco.detectMarkers(gray, self.aruco_dict, parameters=self.parameters, cameraMatrix=self.refinedMatrix, distCoeff=self.distCoeffs)
 
 		#remove detected markers that aren't defined in marker_points.txt, and change format to array from matrix
@@ -658,6 +670,18 @@ ap.add_argument("-dc", "--DefaultCalibration", default=False, action='store_true
 ap.add_argument("-ad", "--ApplyDisplacement", default=False, action='store_true',
 	help="Applies displacement indicated by displacement.txt to results.")
 
+ap.add_argument("-crl", "--CropLeft", type=int, default=0,
+	help="Crop images from the left by amount of pixels, zero by default.")
+
+ap.add_argument("-crr", "--CropRight", type=int, default=0,
+	help="Crop images from the right by amount of pixels, zero by default.")
+
+ap.add_argument("-crt", "--CropTop", type=int, default=0,
+	help="Crop images from the top by amount of pixels, zero by default.")
+
+ap.add_argument("-crb", "--CropBottom", type=int, default=0,
+	help="Crop images from the bottom by amount of pixels, zero by default.")
+
 ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
 	help="Shows coordinates directly calculated by OpenCV, relative to camera's orientation (only applicable in video mode)")
 
@@ -712,6 +736,7 @@ ap.add_argument("-iZM", "--InverseZMarker", default=True, action='store_false',
 args = vars(ap.parse_args())
 
 pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'], defaultCalibration = args['DefaultCalibration'], applyDisplacement = args['ApplyDisplacement'])
+pd.setImageCropping(cropLeft = args['CropLeft'], cropRight = args['CropRight'], cropTop = args['CropTop'], cropBottom = args['CropBottom'])
 pd.setCoordinatesOutput(inverseX = args['InverseX'], inverseY = args['InverseY'], inverseZ = args['InverseZ'])
 pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZAngle = args['InverseZAngle'])
 pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = args['InverseYMarker'], inverseZMarker = args['InverseZMarker'])

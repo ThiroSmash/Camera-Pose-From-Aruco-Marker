@@ -27,6 +27,9 @@ If the point you wish to estimate is a fixed distance away from the camera, but 
 X Y Z
 to indicate the displacement in each of the coordinates. When the rotation of the camera is different than zero angles, this displacement is recalculated accordingly, treating the camera and the destiny point as a single body.
 
+(OPTIONAL)
+If the camera puts unwanted black or grey margins in the video, that will hinder the pose estimations. Use the given parameters to crop the images as needed, for both CameraCalibration.py and PoseDetection.py
+
 	CAMERA CALIBRATION
 Plug into your device the camera that you wish to use. Then, run CameraCalibration.py, indicating the port of the camera with the --port argument.
 

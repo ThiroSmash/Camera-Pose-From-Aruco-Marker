@@ -51,8 +51,24 @@ ap.add_argument("-p", "--port", type=int, default=0,
 ap.add_argument("-i", "--iterations", type=int, default=10,
 	help="Amount of valid samples to require for the calibration")
 
+ap.add_argument("-crl", "--CropLeft", type=int, default=0,
+	help="Crop images from the left by amount of pixels, zero by default.")
+
+ap.add_argument("-crr", "--CropRight", type=int, default=0,
+	help="Crop images from the right by amount of pixels, zero by default.")
+
+ap.add_argument("-crt", "--CropTop", type=int, default=0,
+	help="Crop images from the top by amount of pixels, zero by default.")
+
+ap.add_argument("-crb", "--CropBottom", type=int, default=0,
+	help="Crop images from the bottom by amount of pixels, zero by default.")
+
 args = vars(ap.parse_args())
 
+cropTop = args['CropTop']
+cropBottom = args['CropBottom']
+cropLeft = args['CropLeft']
+cropRight = args['CropRight']
 #termination criteria
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
@@ -77,13 +93,17 @@ print("Grabbing chessboard samples from video stream.")
 lastSampleTime = -3
 reprojSample = None
 while nFound < args["iterations"]:
-	if not (lastSampleTime + 3 > time.time()):	# I realise that calling time.time() every frame is highly 
-							# ineffficient. However, time.sleep() messes up cv2's imshow 
+	if not (lastSampleTime + 3 > time.time()):	# Calling time.time() every frame is highly
+							# ineffficient. However, time.sleep() messes up cv2's imshow
 							# function and efficiency is not of concern for this program
 		# grab the frame from the threaded video stream
 		frame = vs.read()
-		cv2.imshow('img', frame)
-		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+		heightI, widthI, trash = frame.shape
+		croppedFrame = frame[cropTop:(heightI-cropBottom), cropLeft:(widthI-cropRight)]
+
+		cv2.imshow('img', croppedFrame)
+		gray = cv2.cvtColor(croppedFrame, cv2.COLOR_BGR2GRAY)
 		# Find the chess board corners
 		ret, corners = cv2.findChessboardCorners(gray, (7,6), None)
 		# If found, add object points, image points (after refining them)
@@ -110,7 +130,7 @@ while nFound < args["iterations"]:
 
 
 ret, mtx, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
-if(ret): 
+if(ret):
 	newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist_coeffs, (width,height), 1, (width,height))
 	print("Parameters Matrix:")
 	print(mtx)
@@ -123,7 +143,7 @@ if(ret):
 	#Error calculation of the estimated parameters
 	#Undistortion
 	dst = cv2.undistort(reprojSample, mtx, dist_coeffs, None, newcameramtx)
-		
+
 	x, y, w, h = roi
 	dst = dst[y:y+h, x:x+w]
 	cv2.imshow('Undistorted sample', dst)
