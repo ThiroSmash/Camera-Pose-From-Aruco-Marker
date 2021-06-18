@@ -100,10 +100,12 @@ while nFound < args["iterations"]:
 		frame = vs.read()
 
 		heightI, widthI, trash = frame.shape
-		croppedFrame = frame[cropTop:(heightI-cropBottom), cropLeft:(widthI-cropRight)]
+
+		croppedFrame = frame[cropTop:(heightI-cropBottom), cropLeft:(widthI-cropRight)].copy()
 
 		cv2.imshow('img', croppedFrame)
 		gray = cv2.cvtColor(croppedFrame, cv2.COLOR_BGR2GRAY)
+		print(gray.shape)
 		# Find the chess board corners
 		ret, corners = cv2.findChessboardCorners(gray, (7,6), None)
 		# If found, add object points, image points (after refining them)
@@ -113,16 +115,16 @@ while nFound < args["iterations"]:
 			corners2 = cv2.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
 			imgpoints.append(corners)
 			# Draw and display the corners
-			cv2.drawChessboardCorners(frame, (7,6), corners2, ret)
-			showFrame = imutils.resize(frame, width=600)
+			cv2.drawChessboardCorners(croppedFrame, (7,6), corners2, ret)
+			showFrame = imutils.resize(croppedFrame, width=600)
 			cv2.imshow('img', showFrame)
 			if nFound < args["iterations"]:
 				print("Sample " + str(nFound) + " saved successfully! 3 seconds until next sample...")
 				lastSampleTime = time.time()
 
 			else:
-				height, width = frame.shape[:2]
-				reprojSample = frame
+				height, width = croppedFrame.shape[:2]
+				reprojSample = croppedFrame
 				print("Last sample saved successfully!")
 
 		if cv2.waitKey(1) & 0xFF == ord('q'):

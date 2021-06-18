@@ -150,7 +150,7 @@ class PoseDetector:
 
 		#crop the frame, if the user asked to
 		height, width, trash = frame.shape
-		croppedFrame = frame[self.cropTop:(height-self.cropBottom), self.cropLeft:(width-self.cropRight)]
+		croppedFrame = frame[self.cropTop:(height-self.cropBottom), self.cropLeft:(width-self.cropRight)].copy()
 
 
 		# detect aruco markers in the frame
