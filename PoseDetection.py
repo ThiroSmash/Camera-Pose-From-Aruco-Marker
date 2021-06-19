@@ -531,7 +531,7 @@ class PoseDetector:
 		file.write("\nDetected markers in each pose:\n")
 
 		for i in range(len(posesList)):
-			file.write(str(int(self.markerIds[math.trunc(i/4)])) + ": ")
+			file.write(str(i+1) + ": ")
 			if successPoses[i]:
 				strPoint = [str(int(point)) for point in poseDetectedMarkersMatrix[i]]
 				joinPoints = ", ".join(strPoint)
