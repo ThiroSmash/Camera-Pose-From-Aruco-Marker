@@ -201,13 +201,13 @@ class PoseDetector:
 			translation_vector.mean()
 			if(success):
 				#solvePnP's x-axis rotation angle is of opposite sign relative to the Y coordinate
-				rotation_vector[0] = -rotation_vector[0]
 
 				if(self.applyDisplacement):
 					for i in range(3):
 						translation_vector[i] = translation_vector[i] + self.displacementArray[i]
 
 				world_coordinates = self.__camera_to_world_coords(rotation_vector, translation_vector)
+				rotation_vector[0] = -rotation_vector[0]
 
 				if(self.inverseX):
 					world_coordinates[0] = -world_coordinates[0]
@@ -650,11 +650,16 @@ class PoseDetector:
 		return newOnes, markersArray
 
 	def __camera_to_world_coords(self, rotation_vector, translation_vector):
-		world_coordinates = [0,0,0]
 
-		world_coordinates[0] = ( translation_vector[0]*math.cos(rotation_vector[1])*math.cos(rotation_vector[2]) + translation_vector[1]*math.sin(rotation_vector[2]) - translation_vector[2]*math.sin(rotation_vector[1]) ).item()
-		world_coordinates[1] = ( translation_vector[1]*math.cos(rotation_vector[0])*math.cos(rotation_vector[2]) - translation_vector[0]*math.sin(rotation_vector[2]) - translation_vector[2]*math.sin(rotation_vector[0]) ).item()
-		world_coordinates[2] = ( translation_vector[2]*math.cos(rotation_vector[1])*math.cos(rotation_vector[0]) + translation_vector[0]*math.sin(rotation_vector[1]) + translation_vector[1]*math.sin(rotation_vector[0]) ).item()
+		rotation_matrix, trash = cv2.Rodrigues(rotation_vector)
+
+		world_coordinates_numpy = np.dot(-(np.linalg.inv(rotation_matrix)),translation_vector)
+
+		#pass from numpy to list and undo translation's inverse output
+		world_coordinates = [0,0,0]
+		world_coordinates[0] = -world_coordinates_numpy[0][0]
+		world_coordinates[1] = -world_coordinates_numpy[1][0]
+		world_coordinates[2] = -world_coordinates_numpy[2][0]
 
 		return world_coordinates
 
