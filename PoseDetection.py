@@ -56,6 +56,7 @@ class PoseDetector:
 	SIMPLE_MOVING_AVERAGE = 1
 	WEIGHTED_MOVING_AVERAGE = 2
 	EXPONENTIAL_MOVING_AVERAGE = 3
+	MOVING_MEDIAN = 4
 
 	def __init__(self, port=0, showOriginals=False, defaultCalibration=False, applyDisplacement=False):
 
@@ -258,10 +259,17 @@ class PoseDetector:
 			#show data in output image
 			if(success):
 
-				if(movingAverageFlag):
+				if(movingAverageFlag and movingAverageFlag != PoseDetector.MOVING_MEDIAN):
 					lastFramesArray.insert(0, world_coordinates + rotation_vector)
 					lastFramesArray.pop()
 					movingAverageResult = np.ma.average(lastFramesArray, axis=0, weights=movingAverageWeights)
+					world_coordinates = movingAverageResult[0:3]
+					rotation_vector = movingAverageResult[3:6]
+
+				if(movingAverageFlag == PoseDetector.MOVING_MEDIAN):
+					lastFramesArray.insert(0, world_coordinates + rotation_vector)
+					lastFramesArray.pop()
+					movingAverageResult = np.median(lastFramesArray, axis=0)
 					world_coordinates = movingAverageResult[0:3]
 					rotation_vector = movingAverageResult[3:6]
 
@@ -690,7 +698,7 @@ ap.add_argument("-crb", "--CropBottom", type=int, default=0,
 ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
 	help="Shows coordinates directly calculated by OpenCV, relative to camera's orientation (only applicable in video mode)")
 
-ap.add_argument("-ma", "--MovingAverage", choices=['None', 'Simple', 'Weighted', 'Exponential'], default='None',
+ap.add_argument("-ma", "--MovingAverage", choices=['None', 'Simple', 'Weighted', 'Exponential', 'Median'], default='None',
 	help="Apply a moving average to smooth results (only applicable in video mode)")
 
 ap.add_argument("-maw", "--MovingAverageWindow", type=int, default=20,
@@ -753,6 +761,8 @@ if(not args['Snapshot']):
 		flag = PoseDetector.WEIGHTED_MOVING_AVERAGE
 	if(args['MovingAverage'] == 'Exponential'):
 		flag = PoseDetector.EXPONENTIAL_MOVING_AVERAGE
+	if(args['MovingAverage'] == 'Median'):
+		flag = PoseDetector.MOVING_MEDIAN
 	pd.video(movingAverageFlag = flag, movingAverageWindow = args['MovingAverageWindow'])
 else:
 	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], maxFailures = args['MaxFailures'], maxMarkersBypass=args['MaxMarkersBypass'])
