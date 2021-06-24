@@ -8,6 +8,7 @@ import cv2
 import cv2.aruco as aruco
 import numpy as np
 import math
+import sys
 
 
 '''
@@ -78,23 +79,45 @@ class PoseDetector:
 			self.focalLengthX = self.matrix[0][0]
 			self.distCoeffs = np.zeros((5), dtype=float)
 		else:
-			self.matrix = np.loadtxt("camera_matrix.txt", float)
-			self.refinedMatrix = np.loadtxt("refined_camera_matrix.txt", float)
-			self.focalLengthX = self.matrix[0][0]
-			self.distCoeffs = np.loadtxt("distortion_coefficients.txt",float)
+
+			try:
+				self.matrix = np.loadtxt("camera_matrix.txt", float)
+				self.refinedMatrix = np.loadtxt("refined_camera_matrix.txt", float)
+				self.focalLengthX = self.matrix[0][0]
+				self.distCoeffs = np.loadtxt("distortion_coefficients.txt",float)
+				assert(self.matrix.shape == (3,3))
+				assert(self.refinedMatrix.shape == (3,3))
+				assert(self.distCoeffs.shape == (5,))
+			except:
+				print("Unexpected ", sys.exc_info()[0], "occurred while loading calibration files.")
+				print("One or more of the calibration files (camera_matrix.txt, refined_camera_matrix.txt, " +
+					"distortion_coefficients.txt) is missing or invalid:")
+				sys.exit()
 
 		#Marker corners coordinates
-		mtx = np.loadtxt("marker_points.txt")
+		try:
+			msg = "marker_points.txt is missing or invalid."
+			mtx = np.loadtxt("marker_points.txt")
+			checked, msg = self.__checkMarkerPoints(mtx)
+			assert(checked)
+		except:
+			print("Unexpected ", sys.exc_info()[0], "occurred while loading marker_points.txt:")
+			print(msg)
+			sys.exit()
+
 		self.markerPoints = np.array(mtx[:,0:3])
 		self.markerIds = mtx[::4,3]
-
 		self.showOriginals = showOriginals
 		self.applyDisplacement = applyDisplacement
 
 		if(applyDisplacement):
-			self.displacementArray = np.loadtxt("displacement.txt", float)
-
-
+			try:
+				self.displacementArray = np.loadtxt("displacement.txt", float)
+				assert(self.displacementArray.shape == (3,))
+			except:
+				print("Unexpected ", sys.exc_info()[0], "occurred while loading displacement.txt:")
+				print("displacement.txt file is missing or invalid.")
+				sys.exit()
 
 	def setImageCropping(self, cropLeft = 0, cropRight = 0, cropTop = 0, cropBottom = 0):
 		self.cropLeft = cropLeft
@@ -648,6 +671,27 @@ class PoseDetector:
 
 	def stop(self):
 		self.vs.stop()
+
+	def __checkMarkerPoints(self, mtx):
+		#Check correct shape of matrix
+		if(mtx.shape[0]%4 != 0):
+			return False, "Number of rows is not a multiple of 4: some markers have missing or excess corners."
+		if(mtx.shape[1] != 4):
+			return False, "Number of columns is different than 4. Notation is X Y Z ID."
+
+		#Check correct structure of matrix
+		checkedMarkers = []
+		for i in range(0,mtx.shape[0],4):
+			if(mtx[i][3] == mtx[i+1][3] == mtx[i+2][3] == mtx[i+3][3]):
+				if(mtx[i][3] not in checkedMarkers):
+					checkedMarkers.append(mtx[i][3])
+				else:
+					return False, ("Marker of ID " + str(int(mtx[i][3])) + " at row " + str(i+1) + " is duplicated.")
+			else:
+				return False, ("Marker at rows " + str(i+1) + "-" + str(i+4) + " has conflicting IDs.")
+
+		return True, ""
+
 
 	def __markersInArray(self, markersArray, newMarkers):
 		newOnes = False
