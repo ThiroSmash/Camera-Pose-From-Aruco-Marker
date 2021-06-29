@@ -161,8 +161,20 @@ class PoseDetector:
 		self.maxSuccesses = maxSuccesses
 		self.maxFailures = maxFailures
 		self.maxMarkersBypass = maxMarkersBypass
-		self.realCoordinatesMatrix = np.loadtxt("camera_points.txt")
-		assert len(self.realCoordinatesMatrix[0]) == 6
+		msg = ""
+		try:
+			msg = "Inputs MaxSuccesses and MaxFailures must be positive integers."
+			assert(maxSuccesses > 0 and maxFailures > 0)
+			msg = "camera_points.txt file is missing or invalid."
+			self.realCoordinatesMatrix = np.loadtxt("camera_points.txt")
+			msg = "camera_points.txt file has invalid amount of columns (must be exactly six)"
+			assert len(self.realCoordinatesMatrix[0]) == 6
+
+		except:
+			print("Unexpected ", sys.exc_info()[0], "occurred while setting snapshot mode configuration:")
+			print(msg)
+			sys.exit()
+
 
 	def processFrame(self):
 		# grab the frame from the threaded video stream
@@ -268,7 +280,8 @@ class PoseDetector:
 			try:
 				assert(movingAverageWindow > 0)
 			except:
-				print("Error: Moving average window must be a positive integer.")
+				print("Unexpected ", sys.exc_info()[0], "occurred while setting video mode configuration:")
+				print("Moving average window must be a positive integer.")
 				sys.exit()
 			#initialize storage with zeros
 			lastFramesArray = [[0 for x in range(6)] for y in range(movingAverageWindow)]
