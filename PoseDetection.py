@@ -157,8 +157,7 @@ class PoseDetector:
 		if(inverseZMarker):
 			self.markerPoints[:,2] = -self.markerPoints[:,2]
 
-	def setSnapshotConfig(self, rawOutputs = False, maxSuccesses = 10, maxFailures = 100, maxMarkersBypass = False):
-		self.rawOutputs = rawOutputs
+	def setSnapshotConfig(self, maxSuccesses = 10, maxFailures = 100, maxMarkersBypass = False):
 		self.maxSuccesses = maxSuccesses
 		self.maxFailures = maxFailures
 		self.maxMarkersBypass = maxMarkersBypass
@@ -265,6 +264,12 @@ class PoseDetector:
 	def video(self, movingAverageFlag = False, movingAverageWindow = 20):
 
 		if(movingAverageFlag):
+
+			try:
+				assert(movingAverageWindow > 0)
+			except:
+				print("Error: Moving average window must be a positive integer.")
+				sys.exit()
 			#initialize storage with zeros
 			lastFramesArray = [[0 for x in range(6)] for y in range(movingAverageWindow)]
 			#set weights depending on type
@@ -487,10 +492,9 @@ class PoseDetector:
 				poseDetectedMarkersMatrix.append([-1])
 			print("Saved successfully.")
 
-		if(not self.rawOutputs):
-			self.__printResults(rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers)
-		else:
-			self.__printResultsRaw(rawResultsArray, rawErrorsArray, successPoses)
+		rawResultsArray = np.around(rawResultsArray, 3)
+		self.__printResults(rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers)
+		self.__printResultsRaw(rawResultsArray, rawErrorsArray, successPoses)
 
 	def __printResults(self, rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers):
 		file = open("results.txt", "a")
@@ -573,8 +577,6 @@ class PoseDetector:
 
 		file.write("\nEstimation errors:\n")
 
-		rawResultsArray = np.around(rawResultsArray, 3)
-
 		file.write("\nRaw results:\n")
 
 		for i in range(nPoints):
@@ -605,42 +607,13 @@ class PoseDetector:
 					file.write(str(i+1) + "." + str(j+1) + ": ")
 					file.writelines("- - - - - -\n")
 
-		file.write("\nRaw results, no index:\n")
-
-		for i in range(nPoints):
-			if(successPoses[i]):
-				for j in range(self.maxSuccesses):
-					strPoint = [str(point) for point in rawResultsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					file.writelines(joinPoints)
-					file.write("\n")
-			else:
-				for j in range(self.maxSuccesses):
-					file.write("- - - - - -\n")
-
-
-		file.write("\nRaw errors, no index:\n")
-
-		for i in range(nPoints):
-			if(successPoses[i]):
-				for j in range(self.maxSuccesses):
-					strPoint = [str(point) for point in rawErrorsArray[i*self.maxSuccesses + j]]
-					joinPoints = " ".join(strPoint)
-					file.writelines(joinPoints)
-					file.write("\n")
-			else:
-				for j in range(self.maxSuccesses):
-					file.write("- - - - - -\n")
-
 		file.close()
 		print("")
-		print("Estimation errors successfully saved in results.txt")
+		print("Pose estimation results successfully saved in results.txt")
 
 	def __printResultsRaw(self, rawResultsArray, rawErrorsArray, successPoses):
-		file = open("results.txt", "a")
+		file = open("raw_results.txt", "a")
 		nPoints = len(self.realCoordinatesMatrix)
-
-		file.write("\nRaw results:\n")
 
 		for i in range(nPoints):
 			if(successPoses[i]):
@@ -652,8 +625,10 @@ class PoseDetector:
 			else:
 				for j in range(self.maxSuccesses):
 					file.write("- - - - - -\n")
+		file.close()
 
-		file.write("\nRaw errors:\n")
+		file = open("raw_errors.txt", "a")
+
 		for i in range(nPoints):
 			if(successPoses[i]):
 				for j in range(self.maxSuccesses):
@@ -667,7 +642,7 @@ class PoseDetector:
 
 		file.close()
 		print("")
-		print("Estimation errors successfully saved in results.txt")
+		print("Raw data successfully saved in raw_results.txt and raw_errors.txt.")
 
 	def stop(self):
 		self.vs.stop()
@@ -751,9 +726,6 @@ ap.add_argument("-maw", "--MovingAverageWindow", type=int, default=20,
 ap.add_argument("-s", "--Snapshot", default=False, action='store_true',
 	help="Turns on snapshot mode (requires camera_points.txt, outputs results and errors in results.txt)")
 
-ap.add_argument("-r", "--RawOutputs", default=False, action='store_true',
-	help="Snapshot mode outputs raw error arrays without context data or filters (only applicable in snapshot mode)")
-
 ap.add_argument("-xs", "--MaxSuccesses", type=int, default=10,
 	help="Number of required successful frames for each shot in snapshot mode, 10 by default (only applicable in snapshot mode)")
 
@@ -809,7 +781,7 @@ if(not args['Snapshot']):
 		flag = PoseDetector.MOVING_MEDIAN
 	pd.video(movingAverageFlag = flag, movingAverageWindow = args['MovingAverageWindow'])
 else:
-	pd.setSnapshotConfig(rawOutputs = args['RawOutputs'], maxSuccesses=args['MaxSuccesses'], maxFailures = args['MaxFailures'], maxMarkersBypass=args['MaxMarkersBypass'])
+	pd.setSnapshotConfig(maxSuccesses=args['MaxSuccesses'], maxFailures = args['MaxFailures'], maxMarkersBypass=args['MaxMarkersBypass'])
 	pd.snapshots()
 
 print("Closing software...")
