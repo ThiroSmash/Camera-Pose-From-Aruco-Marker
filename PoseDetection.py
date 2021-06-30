@@ -385,8 +385,7 @@ class PoseDetector:
 		for i in range(nPoints):
 			successes = 0
 			errors_i = []
-			print("")
-			print("Next pose:")
+			print("\nNext pose:")
 			print("X: " + str(self.realCoordinatesMatrix[i][0]))
 			print("Y: " + str(self.realCoordinatesMatrix[i][1]))
 			print("Z: " + str(self.realCoordinatesMatrix[i][2]))
@@ -395,8 +394,7 @@ class PoseDetector:
 			print("Z-axis angle: " + str(self.realCoordinatesMatrix[i][5]))
 			print("")
 			input("Position camera and press Enter to continue.")
-			print("Taking samples...")
-			print("")
+			print("Taking samples...\n")
 			#take multiple shots of the point in question. if marker can't be detected, notify user
 			failures = 0
 			maxMarkers = 0
@@ -406,7 +404,17 @@ class PoseDetector:
 			tempRawErrors = np.empty((0,6), dtype=float)
 			poseDetectedMarkers = []
 			while(successes < self.maxSuccesses and not skipped):
-				success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, frame = self.processFrame()
+				try:
+					success, world_coordinates, rotation_vector, translation_vector, detectedMarkers, frame = self.processFrame()
+				except:
+					print("Unexpected ", sys.exc_info()[0],  " occured, aborting process.")
+					if(i > 0):
+						print("Current data will be stored in appropiate save files.\n")
+						rawResultsArray = np.around(rawResultsArray, 3)
+						self.__printResults(rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers, i)
+						self.__printResultsRaw(rawResultsArray, rawErrorsArray, successPoses, i)
+					self.stop()
+					sys.exit()
 				if(success):
 					#if a new, previously undetected marker appeared, discard previous samples and start over, unless bypass activated
 					newDetected, poseDetectedMarkers = self.__markersInArray(poseDetectedMarkers, detectedMarkers)
@@ -506,12 +514,17 @@ class PoseDetector:
 			print("Saved successfully.")
 
 		rawResultsArray = np.around(rawResultsArray, 3)
-		self.__printResults(rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers)
+		self.__printResults(rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarker)
 		self.__printResultsRaw(rawResultsArray, rawErrorsArray, successPoses)
 
-	def __printResults(self, rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers):
+	def __printResults(self, rawResultsArray, rawErrorsArray, successPoses, poseDetectedMarkersMatrix, finalDetectedMarkers, midHalt = 0):
 		file = open("results.txt", "a")
-		nPoints = len(self.realCoordinatesMatrix)
+
+		if(midHalt > 0):
+			nPoints = midHalt
+			print("\nWARNING: Following data is incomplete, only the first ", midHalt, " poses are saved.\n")
+		else:
+			nPoints = len(self.realCoordinatesMatrix)
 		#save outputs with context and filters
 
 		file.write("\nCoordinate systems:\n")
@@ -578,7 +591,7 @@ class PoseDetector:
 
 		file.write("\nDetected markers in each pose:\n")
 
-		for i in range(len(posesList)):
+		for i in range(nPoints):
 			file.write(str(i+1) + ": ")
 			if successPoses[i]:
 				strPoint = [str(int(point)) for point in poseDetectedMarkersMatrix[i]]
@@ -624,9 +637,12 @@ class PoseDetector:
 		print("")
 		print("Pose estimation results successfully saved in results.txt")
 
-	def __printResultsRaw(self, rawResultsArray, rawErrorsArray, successPoses):
+	def __printResultsRaw(self, rawResultsArray, rawErrorsArray, successPoses, midHalt = 0):
 		file = open("raw_results.txt", "a")
-		nPoints = len(self.realCoordinatesMatrix)
+		if(midHalt > 0):
+			nPoints = midHalt
+		else:
+			nPoints = len(self.realCoordinatesMatrix)
 
 		for i in range(nPoints):
 			if(successPoses[i]):
