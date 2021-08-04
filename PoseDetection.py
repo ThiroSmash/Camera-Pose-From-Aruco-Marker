@@ -6,6 +6,7 @@ import argparse
 import imutils
 import cv2
 import cv2.aruco as aruco
+from PIL import ImageGrab
 import numpy as np
 import math
 import sys
@@ -13,16 +14,24 @@ import sys
 
 '''
 	WebcamVideoStream class
-	Simple class to encapsulate threaded usage of OpenCV's video capturing tools
-	from PyImageSearch
+	Simple class to encapsulate threaded usage of OpenCV/PIL's video capturing tools
+	from PyImageSearch with slight modifications
 '''
 class WebcamVideoStream:
-	def __init__(self, src=0):
+	def __init__(self, src=0, bbox=-1):
 		# initialize the video camera stream and read the first frame
 		# from the stream
-		self.stream = cv2.VideoCapture(src)
+		if(bbox == -1):
+			self.stream = cv2.VideoCapture(src)
+			self.recordScreen = False
+			(self.grabbed, self.frame) = self.stream.read()
+		else:
+			self.bbox = tuple(bbox)
+			self.recordScreen = True
+			self.frame = ImageGrab.grab(self.bbox)
+			self.frame = cv2.cvtColor(np.array(self.frame), cv2.COLOR_RGB2BGR)
 		self.repeated = False
-		(self.grabbed, self.frame) = self.stream.read()
+
 		# initialize the variable used to indicate if the thread should
 		# be stopped
 		self.stopped = False
@@ -37,11 +46,17 @@ class WebcamVideoStream:
 			if self.stopped:
 				return
 			# otherwise, read the next frame from the stream
-			(self.grabbed, self.frame) = self.stream.read()
+			if(self.recordScreen):
+				self.frame = ImageGrab.grab(bbox=self.bbox)
+				#self.frame = cv2.cvtColor(np.array(self.frame), cv2.COLOR_RGB2BGR)
+			else:
+				(self.grabbed, self.frame) = self.stream.read()
 			self.repeated = False
 
 	def read(self):
 		# return the frame most recently read
+		if(self.recordScreen):
+			self.frame = cv2.cvtColor(np.array(self.frame), cv2.COLOR_RGB2BGR)
 		if(self.repeated):
 			return self.frame, self.repeated
 		else:
@@ -59,10 +74,10 @@ class PoseDetector:
 	EXPONENTIAL_MOVING_AVERAGE = 3
 	MOVING_MEDIAN = 4
 
-	def __init__(self, port=0, showOriginals=False, defaultCalibration=False, applyDisplacement=False):
+	def __init__(self, port=0, boundingBox=-1, showOriginals=False, defaultCalibration=False, applyDisplacement=False):
 
 		#create a threaded video stream
-		self.vs = WebcamVideoStream(src=port).start()
+		self.vs = WebcamVideoStream(src=port, bbox=boundingBox).start()
 
 		#prerequisites of aruco detection
 		self.aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
@@ -118,12 +133,6 @@ class PoseDetector:
 				print("Unexpected ", sys.exc_info()[0], "occurred while loading displacement.txt:")
 				print("displacement.txt file is missing or invalid.")
 				sys.exit()
-
-	def setImageCropping(self, cropLeft = 0, cropRight = 0, cropTop = 0, cropBottom = 0):
-		self.cropLeft = cropLeft
-		self.cropRight = cropRight
-		self.cropTop = cropTop
-		self.cropBottom = cropBottom
 
 	def setCoordinatesOutput(self, inverseX = True, inverseY = False, inverseZ = False):
 		self.inverseX = inverseX
@@ -183,13 +192,8 @@ class PoseDetector:
 			if(not repeated):
 				break
 
-		#crop the frame, if the user asked to
-		height, width, trash = frame.shape
-		croppedFrame = frame[self.cropTop:(height-self.cropBottom), self.cropLeft:(width-self.cropRight)].copy()
-
-
 		# detect aruco markers in the frame
-		gray = cv2.cvtColor(croppedFrame, cv2.COLOR_BGR2GRAY)
+		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 		corners, idsM, rejectedImgPoints = aruco.detectMarkers(gray, self.aruco_dict, parameters=self.parameters, cameraMatrix=self.refinedMatrix, distCoeff=self.distCoeffs)
 
 		#remove detected markers that aren't defined in marker_points.txt, and change format to array from matrix
@@ -725,23 +729,14 @@ ap = argparse.ArgumentParser()
 ap.add_argument("-p", "--Port", type=int, default=0,
 	help="Camera port to use (for more info, run testports.py), port 0 by default")
 
+ap.add_argument('-rb', '--RecordBox', nargs='+', type=int, default=-1,
+	help="Capture a box of the computer screen for video input instead of a camera. Coordinates are top, left, bottom and right edges respectively (top-left corner being (0,0)). This option overrides port.")
+
 ap.add_argument("-dc", "--DefaultCalibration", default=False, action='store_true',
 	help="Sets the camera's intrinsic parameters to defaults, skipping calibration. False by default.")
 
 ap.add_argument("-ad", "--ApplyDisplacement", default=False, action='store_true',
 	help="Applies displacement indicated by displacement.txt to results.")
-
-ap.add_argument("-crl", "--CropLeft", type=int, default=0,
-	help="Crop images from the left by amount of pixels, zero by default.")
-
-ap.add_argument("-crr", "--CropRight", type=int, default=0,
-	help="Crop images from the right by amount of pixels, zero by default.")
-
-ap.add_argument("-crt", "--CropTop", type=int, default=0,
-	help="Crop images from the top by amount of pixels, zero by default.")
-
-ap.add_argument("-crb", "--CropBottom", type=int, default=0,
-	help="Crop images from the bottom by amount of pixels, zero by default.")
 
 ap.add_argument("-o", "--ShowOriginals", default=False, action='store_true',
 	help="Shows coordinates directly calculated by OpenCV, relative to camera's orientation (only applicable in video mode)")
@@ -793,8 +788,7 @@ ap.add_argument("-iZM", "--InverseZMarker", default=True, action='store_false',
 
 args = vars(ap.parse_args())
 
-pd = PoseDetector(port=args['Port'], showOriginals=args['ShowOriginals'], defaultCalibration = args['DefaultCalibration'], applyDisplacement = args['ApplyDisplacement'])
-pd.setImageCropping(cropLeft = args['CropLeft'], cropRight = args['CropRight'], cropTop = args['CropTop'], cropBottom = args['CropBottom'])
+pd = PoseDetector(port=args['Port'], boundingBox=args['RecordBox'], showOriginals=args['ShowOriginals'], defaultCalibration = args['DefaultCalibration'], applyDisplacement = args['ApplyDisplacement'])
 pd.setCoordinatesOutput(inverseX = args['InverseX'], inverseY = args['InverseY'], inverseZ = args['InverseZ'])
 pd.setAnglesOutput(inverseXAngle = args['InverseXAngle'], inverseYAngle = args['InverseYAngle'], inverseZAngle = args['InverseZAngle'])
 pd.setMarkersInput(inverseXMarker = args['InverseXMarker'], inverseYMarker = args['InverseYMarker'], inverseZMarker = args['InverseZMarker'])
