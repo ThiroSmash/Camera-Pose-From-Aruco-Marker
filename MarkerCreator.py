@@ -19,7 +19,7 @@ aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
 # second parameter is id number
 # last parameter is total image size
 img = aruco.drawMarker(aruco_dict, args["id"], args["size"])
-name = "marker" + str(args["id"]) + ".jpg"
+name = "marker" + str(args["id"]) + ".png"
 
 cv2.imwrite(name, img)
 cv2.imshow('frame',img)
